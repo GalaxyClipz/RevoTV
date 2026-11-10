@@ -53,6 +53,43 @@ public class RevoActivity extends UnityPlayerActivity {
         super.onCreate(savedInstanceState);
         me = this;
         noteIntent(getIntent());
+        showSplash();
+    }
+
+    // ---- start-up cover: the engine needs a few seconds (much longer right after the TV boots) before its first frame, which
+    // looked like a dead black screen. Revo's banner sits on top until the menu is drawn (C#: TVPerf calls hideSplash).
+    private android.view.View splash;
+    private void showSplash() {
+        try {
+            android.widget.FrameLayout f = new android.widget.FrameLayout(this);
+            f.setBackgroundColor(0xFFDCEBF7);
+            // animated loading screen (res/raw/revotv_loading.webp, 1280x720, ~16 fps so it stays light while the engine loads)
+            int id = getResources().getIdentifier("revotv_loading", "raw", getPackageName());
+            if (id != 0 && Build.VERSION.SDK_INT >= 28) {
+                android.widget.ImageView img = new android.widget.ImageView(this);
+                android.graphics.drawable.Drawable d = android.graphics.ImageDecoder.decodeDrawable(
+                        android.graphics.ImageDecoder.createSource(getResources(), id));
+                img.setImageDrawable(d);
+                img.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
+                f.addView(img, new android.widget.FrameLayout.LayoutParams(-1, -1));
+                if (d instanceof android.graphics.drawable.AnimatedImageDrawable) ((android.graphics.drawable.AnimatedImageDrawable) d).start();
+            }
+            addContentView(f, new android.view.ViewGroup.LayoutParams(-1, -1));
+            splash = f;
+            handler.postDelayed(RevoActivity::hideSplash, 120000); // never stays forever
+        } catch (Throwable ignored) { }
+    }
+    public static void hideSplash() {
+        final RevoActivity a = me;
+        if (a == null) return;
+        a.runOnUiThread(() -> {
+            final android.view.View s = a.splash;
+            if (s == null) return;
+            a.splash = null;
+            s.animate().alpha(0f).setDuration(250).withEndAction(() -> {
+                try { ((android.view.ViewGroup) s.getParent()).removeView(s); } catch (Throwable ignored) { }
+            }).start();
+        });
     }
 
     @Override

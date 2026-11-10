@@ -210,7 +210,7 @@ public class TVWeatherPreview : MonoBehaviour
     // a short, soft chime: a rising bell arpeggio and a held chord, in the style of an old console menu
     private void PlayChime()
     {
-        // "Xylophone jingle" by spazzo_1493 (Wikimedia Commons), CC BY 3.0 (credited in Settings > Credits); the made-in-code
+        // RevoTV's own smooth-jazz intro (electric piano, bass, vibraphone; made for RevoTV, nothing sampled); the made-in-code
         // chime below is only the fallback
         if (chimeClip == null) chimeClip = Resources.Load<AudioClip>("ForecastChime");
         if (chimeClip == null)

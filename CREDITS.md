@@ -9,4 +9,3 @@
 - **Weather and Photo channel music** – "Local Forecast - Elevator" and "Local Forecast" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/). Re-encoded smaller (mono, Ogg Vorbis).
 - Wii is a trademark of Nintendo. This project is not affiliated with Nintendo.
 
-- **Forecast Channel preview jingle** – "Xylophone jingle" by spazzo_1493 (Wikimedia Commons), licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). Trimmed and re-encoded (Ogg Vorbis).

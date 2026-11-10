@@ -46,6 +46,7 @@ public class TVPerf : MonoBehaviour
         TVWeather.EnsureChannel(this);
         TVWeatherPreview.Ensure(this);
         StartCoroutine(MeasureChip());
+        StartCoroutine(HideSplashOnceDrawn());
         if (Flag("server")) { yield return new WaitForSeconds(6f); TVServerScreen.Show(); } // test switch: opens the Channel Server screen
         StartCoroutine(RefreshThemeOnceReady());
         StartCoroutine(DebugSwitches());
@@ -91,6 +92,18 @@ public class TVPerf : MonoBehaviour
         float ms = t * 1000f / Mathf.Max(1, n);
         Debug.Log("[PERF] menu frame time " + ms.ToString("0.0") + " ms" + (ms > 30f ? ": slow chip, steady 20 fps from now on" : ": full rate"));
         if (ms > 30f) { PlayerPrefs.SetInt(SlowKey, 1); PlayerPrefs.Save(); if (!Cooling) app.RefreshFramerate(); }
+    }
+
+    // RevoActivity's banner cover goes once the menu (or the first-run warning) has drawn a frame
+    private IEnumerator HideSplashOnceDrawn()
+    {
+        var app = AppController._instance;
+        while (app == null || app.mainView == null || !(app.mainView.activeInHierarchy || app.warningView.activeInHierarchy)) yield return null;
+        yield return null; yield return new WaitForEndOfFrame();
+        Debug.Log("[PERF] menu drawn at t=" + Time.realtimeSinceStartup.ToString("0.0") + ", start-up cover off");
+#if UNITY_ANDROID && !UNITY_EDITOR
+        try { using var c = new AndroidJavaClass("com.karuzohikari.revotv.RevoActivity"); c.CallStatic("hideSplash"); } catch (System.Exception) { }
+#endif
     }
 
     private IEnumerator RefreshThemeOnceReady()

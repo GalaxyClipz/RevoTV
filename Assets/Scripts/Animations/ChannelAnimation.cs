@@ -97,6 +97,8 @@ public class ChannelAnimation : ContentContainer, HasOptions
 
     public void PlayAudio()
     {
+        // the Forecast Channel's preview has its own built-in jingle; an older saved preview sound must not play over it
+        if (type == CHANNELTYPE.BANNER && TVMode.IsTV && ChannelController._instance != null && TVTiles.IsBuiltInPreview(ChannelController._instance.currentChannel)) return;
         AudioController.PlayMainAudio(audioClip, shouldLoopAudio, loopingPoint: loopPoint);
     }
 

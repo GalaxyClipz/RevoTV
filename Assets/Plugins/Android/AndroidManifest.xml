@@ -14,6 +14,7 @@
       </intent-filter>
       <!-- the HOME entry lives only on the ".launcher" alias below, turned on and off by "Use as home screen" -->
       <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+      <meta-data android:name="unityplayer.SkipPermissionsDialog" android:value="true" />
     </activity>
     <activity-alias android:enabled="false" android:exported="true" android:name=".launcher" android:targetActivity="com.karuzohikari.revotv.RevoActivity">
       <intent-filter>
