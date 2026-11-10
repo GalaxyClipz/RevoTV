@@ -1,7 +1,9 @@
 # RevoTV (Revo Launcher for Android TV, Google TV, Fire TV and projectors)
-An open-source fork of [Revo Launcher](https://github.com/KaruzoHikari/Revo-Launcher) by Kaz (KaruzoHikari), made to be the home
-screen of a TV box or projector and used with a TV remote. Same license as the original: **CC BY-NC-SA 4.0** (free and open source,
-non-commercial, credit kept, changes shared alike).
+**Made by BubbyJr ([GalaxyClipz](https://github.com/GalaxyClipz)) and BubbyAi.** BubbyJr: idea, design, testing and direction.
+BubbyAi: built the TV version (remote navigation, home screen, Forecast/Photo/Disc channels, Channel Server, theme fixes, Glass 2026).
+
+Based on [Revo Launcher](https://github.com/KaruzoHikari/Revo-Launcher) by Kaz (KaruzoHikari). Open source under the same license:
+**CC BY-NC-SA 4.0** (free, non-commercial, credit kept, changes shared alike).
 
 > **Not taking feature requests**, but bug reports are welcome: open an [issue](https://github.com/GalaxyClipz/RevoTV/issues)
 > with your TV model and what happened, and I'll look at fixing it.
