@@ -463,8 +463,36 @@ public class WebRequestController : MonoBehaviour
             return request;
         }
 
-        Debug.Log($"Received from server: " + request.downloadHandler.text);
+        // a theme or animation download is megabytes of zip: turning it into text for the log took many seconds on a TV
+        if (request.downloadHandler is DownloadHandlerBuffer && request.downloadedBytes <= 4096) Debug.Log($"Received from server: " + request.downloadHandler.text);
+        else Debug.Log($"Received from server: {request.downloadedBytes} bytes");
         return request;
+    }
+
+    // a theme straight into a file (no copy of it in memory), with progress 0..1; null = done, else what went wrong
+    public static async Task<string> DownloadThemeToFile(string animationId, string path, Action<float> progress)
+    {
+        string part = path + ".part";
+        try { if (File.Exists(part)) File.Delete(part); } catch (Exception) { }
+        using var req = new UnityWebRequest(GetUrl($"/themes/download/{animationId}"), "GET");
+        req.downloadHandler = new DownloadHandlerFile(part) { removeFileOnAbort = true };
+        foreach (var kv in GetAuthHeader()) req.SetRequestHeader(kv.Key, kv.Value);
+        req.useHttpContinue = false;
+        var op = req.SendWebRequest();
+        ulong lastBytes = 0; float lastMove = Time.unscaledTime;
+        while (!op.isDone)
+        {
+            progress?.Invoke(req.downloadProgress);
+            if (req.downloadedBytes != lastBytes) { lastBytes = req.downloadedBytes; lastMove = Time.unscaledTime; }
+            else if (Time.unscaledTime - lastMove > 30f) { req.Abort(); return "The download stopped (no data for 30 s)"; }
+            await Task.Yield();
+        }
+        if (req.result != UnityWebRequest.Result.Success) { try { File.Delete(part); } catch (Exception) { } return "The theme couldn't be downloaded (" + req.error + ")"; }
+        Debug.Log($"[Hub] theme {animationId}: {req.downloadedBytes} bytes to file");
+        if (File.Exists(path)) File.Delete(path);
+        File.Move(part, path);
+        progress?.Invoke(1f);
+        return null;
     }
 
     public static async Task<Texture2D> SendDownloadCover(string url, bool askThroughHttp, UnityAction<Texture2D> action = null)

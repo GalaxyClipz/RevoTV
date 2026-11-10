@@ -17,6 +17,7 @@ public class WarningController : MonoBehaviour
     public TextMeshProUGUI channelNumber;
     public TextMeshProUGUI taskDescription;
     private bool isLoading = false;
+    private bool pressedEarly;
     public bool debugLockScreen = false;
     public Image viewBlocker;
 
@@ -45,6 +46,7 @@ public class WarningController : MonoBehaviour
         yield return new WaitForEndOfFrame();
         yield return new WaitForSeconds(0.25f); // this used to be 1.25f, why..?
         canStart = true;
+        if (pressedEarly && !PREFS.LoadChannelsAutomatically.GetBool()) { ClickedWarning(); yield break; }
         
         if (PREFS.LoadChannelsAutomatically.GetBool())
         {
@@ -61,10 +63,22 @@ public class WarningController : MonoBehaviour
 
     /*private void Update()
     {
-        if(Input.GetMouseButtonDown(0)) {
+        if(RInput.GetMouseButtonDown(0)) {
             ClickedWarning();
         }
     }*/
+
+    // coming back from the Photo Channel after Android closed Revo: straight on to the menu, nobody has to press A again
+    public void ContinueWhenReady()
+    {
+        StartCoroutine(_ContinueWhenReady());
+    }
+
+    private IEnumerator _ContinueWhenReady()
+    {
+        while (!canStart) yield return new WaitForSeconds(0.2f);
+        ClickedWarning();
+    }
 
     public void HoldWarning()
     {
@@ -91,11 +105,12 @@ public class WarningController : MonoBehaviour
         }
         else
         {
+            if (!isLoading && !canStart && !debugLockScreen && TVMode.IsTV && Time.realtimeSinceStartup > 3f) pressedEarly = true; // still getting ready: go on as soon as it can
             if (!isLoading && canStart && !debugLockScreen)
             {
                 isLoading = true;
                 pressText.gameObject.SetActive(false);
-                if (PREFS.ShowLoadingBar.GetBool())
+                if (PREFS.ShowLoadingBar.GetBool() && !TVMode.IsTV) // TV: loading stays hidden behind the fade
                 {
                     progressBar.gameObject.SetActive(true);
                 }

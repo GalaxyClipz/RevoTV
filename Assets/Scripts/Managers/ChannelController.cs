@@ -51,7 +51,7 @@ public class ChannelController : MonoBehaviour
 
     private void Update()
     {
-        if(Input.GetMouseButtonDown(0))
+        if(RInput.GetMouseButtonDown(0))
         {
             CheckSkipChannel();
         }
@@ -130,6 +130,7 @@ public class ChannelController : MonoBehaviour
         AnimationController._instance.ChangeCurrentAnimation(bannerAnimation);
 
         channelView.SetActive(true);
+        TVLayout.FitChannelView(channelObjects, channelLeftArrow, channelRightArrow);
         Vector2 center = currentChannel.appHandler.GetCenter();
         channelObjects.transform.position = new Vector3(center.x, center.y, 0);
 
@@ -175,9 +176,9 @@ public class ChannelController : MonoBehaviour
 
     private void CheckSkipChannel()
     {
-        if (currentChannel != null && canSkipChannel && Application.isMobilePlatform && SwipeController._instance.shouldCheckDoubleClick)
+        if (currentChannel != null && canSkipChannel && TVMode.UseTouch && SwipeController._instance.shouldCheckDoubleClick)
         {
-            Vector2 worldPos = CameraController._instance.GetWorldPosition(Input.mousePosition);
+            Vector2 worldPos = CameraController._instance.GetWorldPosition(RInput.mousePosition);
             if (StaticUtils.IsInsideTransform(currentChannel.appHandler.rectTransform, worldPos, 5))
             {
                 Debug.Log("Skipping channel!");
@@ -232,12 +233,15 @@ public class ChannelController : MonoBehaviour
 
         // Then we open it
         float size = GridController._instance.GetChannelSizeMultiplier();
-        currentChannel.appHandler.Resize(size);
+        currentChannel.appHandler.transform.localScale = HomeTileScale();
 
+        lastHigher = higher;
         currentChannel = nextChannel;
         nextChannel.appHandler.transform.localScale = new Vector3(0.425f * size, size, size);
         StartCoroutine(_ChangeChannel(nextChannel));
     }
+
+    private bool lastHigher;
 
     private IEnumerator _ChangeChannel(Channel nextChannel)
     {
@@ -252,6 +256,15 @@ public class ChannelController : MonoBehaviour
         CameraController._instance.transform.position = new Vector3(center.x, center.y, -180f);
         AnimationController._instance.RestartChannelAnimation();
         AppController.SetTransitioning(false);
+
+        if (TVMode.IsTV)
+        {
+            // Wii-style: the next channel glides in from the side
+            var t = channelObjects.transform;
+            float w = ((RectTransform) t).rect.width * t.lossyScale.x * 0.6f;
+            t.position = new Vector3(center.x + (lastHigher ? w : -w), center.y, 0);
+            DG.Tweening.ShortcutExtensions.DOMoveX(t, center.x, 0.26f).SetEase(DG.Tweening.Ease.OutQuart);
+        }
     }
 
     private Channel FindNextChannel(int initialGrid, int position)
@@ -350,8 +363,9 @@ public class ChannelController : MonoBehaviour
         }
         
         channelObjects.transform.DOScale(GetDefaultChannelObjectsSize(), duration);
-        currentChannel.appHandler.transform.DOScaleX(GridController._instance.GetChannelSizeMultiplier(), duration);
-        
+        // straight back to the size the home grid keeps it at (classic TV tiles have their own proportions), so it never shows a wrong shape first
+        currentChannel.appHandler.transform.DOScale(HomeTileScale(), duration);
+
         DOTween.ToAlpha(() => blackBlackground.color, x => blackBlackground.color = x, 0, duration);
         //DOTween.ToAlpha(() => blackBorder.color, x => blackBorder.color = x, 0, duration);
         DOTween.To(() => canvasGroup.alpha, x => canvasGroup.alpha = x, 0, duration);
@@ -366,6 +380,16 @@ public class ChannelController : MonoBehaviour
         AnimationController._instance.ChangeCurrentAnimation(null);
         GridController._instance.ShowArrows();
         AppController.SetTransitioning(false);
+    }
+
+    // the scale a channel tile has on the home grid (the same numbers Grid.ResizeGrid and TVNav.EnforceTileSizes use)
+    public static Vector3 HomeTileScale()
+    {
+        float s = GridController._instance.GetChannelSizeMultiplier();
+        var v = new Vector3(s * TVMode.TileStretch.x, s * TVMode.TileStretch.y, 0f);
+        if (TVMode.IsTV && !TVGlass.On && !CameraController.IsPortrait())
+            v = Vector3.Scale(v, new Vector3(TVTune.Get("fillx", 1.052f), TVTune.Get("filly", 0.974f), 1f));
+        return v;
     }
 
     public void RefreshChannelObjectsSize()
@@ -538,7 +562,13 @@ public class ChannelController : MonoBehaviour
         List<AnimationBasicInfo> list = new List<AnimationBasicInfo>();
         foreach (string path in newPaths)
         {
-            AnimationBasicInfo basicInfo = SaveManager.GetBasicInfo(false, FileManager.GetFileName(path));
+            // a theme file's name and date are read once (opening every zip again made the theme list take a long while)
+            string key = path + "|" + new FileInfo(path).Length;
+            if (!themeInfoCache.TryGetValue(key, out AnimationBasicInfo basicInfo))
+            {
+                basicInfo = SaveManager.GetBasicInfo(false, FileManager.GetFileName(path));
+                if (basicInfo != null) themeInfoCache[key] = basicInfo;
+            }
             if (basicInfo != null)
             {
                 list.Add(basicInfo);
@@ -547,6 +577,7 @@ public class ChannelController : MonoBehaviour
 
         return list;
     }
+    private readonly Dictionary<string, AnimationBasicInfo> themeInfoCache = new Dictionary<string, AnimationBasicInfo>();
 
     public List<ChannelAnimation> GetAllChannelAnimations(CHANNELTYPE channeltype)
     {

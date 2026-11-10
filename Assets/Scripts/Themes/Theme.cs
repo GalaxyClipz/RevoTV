@@ -111,6 +111,12 @@ public class Theme : ContentContainer
 
     public Color GetColor(ThemeColor themeColor)
     {
+        // the hover colour picked in Settings tints the tile's own hover ring too, on every look, so both rings match
+        if (themeColor == ThemeColor.ChannelHighlight && TVMode.IsTV && !TVGlass.On && TVGlowColor.Current != "auto" && ColorUtility.TryParseHtmlString(TVGlowColor.Current, out var pick))
+        {
+            Color baseC = colorMap.ContainsKey(themeColor) ? colorMap[themeColor] : Color.white;
+            pick.a = baseC.a; return pick;
+        }
         if (colorMap.ContainsKey(themeColor))
         {
             return colorMap[themeColor];

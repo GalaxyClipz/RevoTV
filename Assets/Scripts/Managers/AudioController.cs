@@ -99,6 +99,7 @@ public class AudioController : MonoBehaviour
         }
     }
 
+    public static bool PlayingMenuMusic => _instance != null && _instance.startedBackgroundMusic && _instance.isMenuMusic;
     public static void RestartBackgroundAudio()
     {
         Debug.Log("Restarting background audio 1!");
@@ -106,7 +107,15 @@ public class AudioController : MonoBehaviour
         {
             Debug.Log("Restarting background audio 2!");
             // this is a replacement to a background audio. we need to restart it
-            if (_instance.isMenuMusic)
+            if (_instance.isMenuMusic && TVMode.IsTV)
+            {
+                // TV: this runs when the TV switches its sound output (it can happen any time, Weather open or not): the music
+                // just carries on with its loop. Replaying the start-up jingle and intro here was the start-up sound heard out of nowhere.
+                Debug.Log("[Music] restarted without the start-up jingle");
+                _instance.isMenuMusic = true;
+                _instance.PlayBackgroundAudio(null, AudioLibrary._instance.MUSIC_MENU_LOOP);
+            }
+            else if (_instance.isMenuMusic)
             {
                 PlayBackgroundMenuMusic();
             }
@@ -195,6 +204,35 @@ public class AudioController : MonoBehaviour
         }
     }
 
+    // opening Weather or Photos on a TV: the home music fades out slowly, and fades back in when you come back
+    private bool homeFaded;
+    public static void FadeOutHome(float seconds = 1.4f)
+    {
+        Debug.Log("[Music] FadeOutHome called: instance=" + (_instance != null) + " tv=" + TVMode.IsTV + " source=" + (_instance != null && _instance.backgroundAudio != null));
+        if (_instance == null || !TVMode.IsTV || _instance.backgroundAudio == null) return;
+        Debug.Log("[Music] fade out requested, playing=" + _instance.backgroundAudio.isPlaying + " volume=" + _instance.backgroundAudio.volume.ToString("0.00"));
+        if (!_instance.backgroundAudio.isPlaying) return;
+        _instance.homeFaded = true;
+        _instance.backgroundAudio.DOKill();
+        _instance.backgroundAudio.DOFade(0f, seconds).OnComplete(() => Debug.Log("[Music] home music faded out, volume=" + _instance.backgroundAudio.volume.ToString("0.00")));
+    }
+
+    public static void FadeInHome(float seconds = 1.8f)
+    {
+        if (_instance == null || !_instance.homeFaded) return;
+        _instance.homeFaded = false;
+        var a = _instance.backgroundAudio;
+        a.DOKill();
+        if (!a.isPlaying) return;
+        a.mute = false;
+        a.DOFade(_instance.defaultBackgroundVolume, seconds).OnComplete(() => Debug.Log("[Music] home music faded back in, volume=" + a.volume.ToString("0.00")));
+    }
+
+    private void OnApplicationFocus(bool focus)
+    {
+        if (focus && homeFaded && !TVWeather.Open) FadeInHome();
+    }
+
     public static void UnmuteBackgroundAudio()
     {
         if (_instance.backgroundAudio.volume < 0.1f)
@@ -231,6 +269,20 @@ public class AudioController : MonoBehaviour
 
     private IEnumerator _PlayMainMenuMusic(AudioClip originalStart, AudioClip originalLoop, float startingPoint)
     {
+        if (isMenuMusic && TVHomeMusic.Has)
+        {
+            // a song of your own for the Home menu (sent from the Channel Server): it replaces the menu loop
+            yield return TVHomeMusic.Load();
+            if (TVHomeMusic.Clip != null)
+            {
+                backgroundAudio.Stop();
+                backgroundAudio.loop = true;
+                backgroundAudio.clip = TVHomeMusic.Clip;
+                startedBackgroundMusic = true;
+                backgroundAudio.Play();
+                yield break;
+            }
+        }
         AudioClip start = ThemeController.GetAudio(originalStart) ?? originalStart;
         AudioClip loop = ThemeController.GetAudio(originalLoop) ?? originalLoop;
         backgroundAudio.Stop();
@@ -251,12 +303,12 @@ public class AudioController : MonoBehaviour
     }
 
 
-    public static void LoadAudio(string path, UnityAction<AudioClip> action, bool compressed = true)
+    public static void LoadAudio(string path, UnityAction<AudioClip> action, bool compressed = true, bool stream = false)
     {
-        _instance.StartCoroutine(_LoadAudio(path, action, compressed));
+        _instance.StartCoroutine(_LoadAudio(path, action, compressed, stream));
     }
 
-    private static IEnumerator _LoadAudio(string soundPath, UnityAction<AudioClip> action, bool compressed)
+    private static IEnumerator _LoadAudio(string soundPath, UnityAction<AudioClip> action, bool compressed, bool stream = false)
     {
         // First we fix the url
         string newPath = soundPath.Replace("content://", "file://");
@@ -296,7 +348,7 @@ public class AudioController : MonoBehaviour
         // and we ask for the file
         using (UnityWebRequest audioFiles = UnityWebRequestMultimedia.GetAudioClip(newPath, audioType))
         {
-            ((DownloadHandlerAudioClip)audioFiles.downloadHandler).streamAudio = false;
+            ((DownloadHandlerAudioClip)audioFiles.downloadHandler).streamAudio = stream;
             // the compressed variable sometimes causes issues and the files don't load properly
             // so first we try to load it compressed, but if it doesn't work then we load it uncompressed
             ((DownloadHandlerAudioClip)audioFiles.downloadHandler).compressed = compressed;
@@ -306,7 +358,7 @@ public class AudioController : MonoBehaviour
                 if (!audioFiles.isNetworkError)
                 {
                     AudioClip clip = DownloadHandlerAudioClip.GetContent(audioFiles);
-                    if (clip.length == 0 && compressed)
+                    if (clip.length == 0 && compressed && !stream)
                     {
                         // it didn't load (probably) so we load it again uncompressed
                         LoadAudio(soundPath, action, false);

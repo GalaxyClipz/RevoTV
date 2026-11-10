@@ -22,6 +22,8 @@ public class PopupController : MonoBehaviour
         _instance = this;
     }
 
+    public static GameObject CurrentPopup => _instance != null ? _instance.currentPopup : null;
+
     public static bool IsPopupOpen()
     {
         return _instance.currentPopup != null;
@@ -67,6 +69,8 @@ public class PopupController : MonoBehaviour
         }
     }
 
+    public static float FreshUntil;
+
     public static void DestroyCurrentPopup()
     {
         if (_instance.currentPopup != null)
@@ -89,6 +93,7 @@ public class PopupController : MonoBehaviour
     public static GameObject ShowPopup(string id, bool addOkButton = true, string[] replacementArray = null, float extraSize = 300, bool closePopupAfter = true, GameObject customPrefab = null)
     {
         Debug.Log($"Showing popup! {id}");
+        FreshUntil = Time.unscaledTime + 0.8f; // on a TV the remote ignores OK for a moment so a press meant for the old screen can't answer the new question
         DestroyCurrentPopup();
         _instance.popupView.SetActive(true);
 
@@ -124,6 +129,14 @@ public class PopupController : MonoBehaviour
             textHeight = maxHeight - extraSize;
         }
         textComponent.gameObject.GetComponent<RectTransform>().sizeDelta = new Vector2(855, textHeight);
+        if (TVMode.IsTV && (id == "popup.credits" || id == "popup.licenses"))
+        {
+            // long lists shrink to fit the box instead of running off it
+            textComponent.enableAutoSizing = true;
+            textComponent.fontSizeMax = textComponent.fontSize;
+            textComponent.fontSizeMin = 12f;
+            textComponent.overflowMode = TextOverflowModes.Overflow;
+        }
 
         float preferredHeight = textComponent.preferredHeight + extraSize;
         // We can't let popups get out of bounds

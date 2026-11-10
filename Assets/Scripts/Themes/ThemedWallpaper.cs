@@ -28,15 +28,25 @@ public class ThemedWallpaper : ThemedImage
         }
     }
 
+    // every wallpaper showing the video (TV: TVVideoWall hands them the video's picture once, instead of an event every frame)
+    private static readonly HashSet<ThemedWallpaper> videoWalls = new HashSet<ThemedWallpaper>();
+    public static void VideoTextureChanged()
+    {
+        foreach (var w in videoWalls) if (w != null) w.LoadVideoFrame(null, 0);
+    }
+
     private void LoadVideoFrame(VideoPlayer source, long frameIdx)
     {
-        if (!isUsingVideo)
+        if (!isUsingVideo || rawImage == null)
         {
             return;
         }
-        
-        wallpaperTexture = WallpaperController._instance.videoPlayer.texture;
-        rawImage.texture = wallpaperTexture;
+
+        var tex = WallpaperController._instance.videoPlayer.texture;
+        if (tex == null) return; // keep the last picture rather than none (an empty picture is drawn white)
+        wallpaperTexture = tex;
+        if (rawImage.texture != tex) rawImage.texture = tex;
+        if (rawImage.color != Color.white) rawImage.color = Color.white;
     }
 
     [Button]
@@ -51,6 +61,9 @@ public class ThemedWallpaper : ThemedImage
         {
             if (isUsingVideo)
             {
+                // the video's picture if it already has one; otherwise the first frame brings it
+                videoWalls.Add(this);
+                wallpaperTexture = WallpaperController._instance.videoPlayer.texture;
                 // we subscribe to retrieve from the texture and leave
                 if (!subscribedToFrameEvents)
                 {
@@ -75,9 +88,10 @@ public class ThemedWallpaper : ThemedImage
         if ((wallpaperTexture is not null || isUsingVideo) && rawImage is not null)
         {
             rawImage.texture = wallpaperTexture;
-            
-            // we also reset the color
-            rawImage.color = Color.white;
+
+            // we also reset the color (a video with no frame yet stays see-through: an empty picture is drawn white, which
+            // flashed the whole background white for a moment when a page's wallpaper was refreshed)
+            rawImage.color = isUsingVideo && wallpaperTexture == null ? new Color(1f, 1f, 1f, 0f) : Color.white;
         }
 
         // we need to remove the tiling we did for the background, since now it's a custom texture

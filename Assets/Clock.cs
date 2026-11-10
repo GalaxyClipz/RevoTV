@@ -35,12 +35,8 @@ public class Clock : MonoBehaviour
 
     private void Awake()
     {
-        DOTween.Sequence()
-            .Append(DOTween.ToAlpha(() => imageSeparator.color, x => imageSeparator.color = x, 0, 0.15f))
-            .AppendInterval(0.6f)
-            .Append(DOTween.ToAlpha(() => imageSeparator.color, x => imageSeparator.color = x, 1, 0.25f))
-            .AppendInterval(0.9f)
-            .SetLoops(-1);
+        // the colon's blink (out 0.15 s, off 0.6 s, in 0.25 s, on 0.9 s) is worked out from the clock time in Update
+        if (TVMode.IsTV && PlayerPrefs.GetInt("TVFork12h", 0) == 0) { PREFS.Is12Format.SetBool(true); PlayerPrefs.SetInt("TVFork12h", 1); }
         CheckPeriodText();
         
         // now we save the textures
@@ -78,6 +74,13 @@ public class Clock : MonoBehaviour
         UpdateHour(true);
     }
     
+    // the colon's blink, the same for every clock on every page (the page-change bar picture's stand-in colon uses it too)
+    public static float BlinkAlpha()
+    {
+        float t = Time.unscaledTime % 1.9f;
+        return t < 0.15f ? 1f - t / 0.15f : t < 0.75f ? 0f : t < 1f ? (t - 0.75f) / 0.25f : 1f;
+    }
+
     public static void CheckPeriodText()
     {
         shouldUpdatePeriod = PREFS.Is12Format.GetBool();
@@ -86,6 +89,11 @@ public class Clock : MonoBehaviour
     [Button("Update Hour")]
     void Update()
     {
+        if (imageSeparator != null)
+        {
+            float a = BlinkAlpha();
+            var sc = imageSeparator.color; if (Mathf.Abs(sc.a - a) > 0.004f) { sc.a = a; imageSeparator.color = sc; }
+        }
         UpdateHour(false);
 
         if (shouldDisable)

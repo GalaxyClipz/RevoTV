@@ -213,6 +213,7 @@ public class AndroidLinker : MonoBehaviour
                 }
                 case "wiiphone.gallery": case "revo.gallery":
                 {
+                    AudioController.FadeOutHome();
                     OpenGallery();
                     break;
                 }
@@ -229,6 +230,12 @@ public class AndroidLinker : MonoBehaviour
                 case "wiiphone.youtube": case "revo.youtube":
                 {
                     OpenYoutube();
+                    break;
+                }
+                case "revo.weather":
+                {
+                    Debug.Log("[Music] weather tile opened"); AudioController.FadeOutHome();
+                    TVWeather.Show();
                     break;
                 }
                 case "wiiphone.disc": case "revo.disc":
@@ -298,6 +305,11 @@ public class AndroidLinker : MonoBehaviour
             try
             {
                 launchIntent = packageManager.Call<AndroidJavaObject>("getLaunchIntentForPackage", bundleId);
+                if (launchIntent == null)
+                {
+                    // TV-only apps only expose a leanback launcher
+                    launchIntent = packageManager.Call<AndroidJavaObject>("getLeanbackLaunchIntentForPackage", bundleId);
+                }
                 currentActivity.Call("startActivity", launchIntent);
             }
             catch (Exception e)
@@ -370,12 +382,14 @@ public class AndroidLinker : MonoBehaviour
             return;
         }
 
+        if (TVMode.IsTV) { TVGfx.Sync(); TVVideoWall.ClosingNormally(); } // the look that's starting decides the graphics driver (TVGfx)
         const int kIntent_FLAG_ACTIVITY_CLEAR_TASK = 0x00008000;
         const int kIntent_FLAG_ACTIVITY_NEW_TASK = 0x10000000;
 
         // todo should we use the launcher activity instead if the app is set as launcher? might not be needed since it's just an alias
         var intent = packageManager.Call<AndroidJavaObject>("getLaunchIntentForPackage", Application.identifier);
 
+        intent.Call<AndroidJavaObject>("putExtra", "restarted", true);
         intent.Call<AndroidJavaObject>("setFlags", kIntent_FLAG_ACTIVITY_NEW_TASK | kIntent_FLAG_ACTIVITY_CLEAR_TASK);
         currentActivity.Call("startActivity", intent);
         currentActivity.Call("finish");
@@ -405,6 +419,11 @@ public class AndroidLinker : MonoBehaviour
         #endif
     }
 
+    public void OpenWifiSettings()
+    {
+        LaunchIntent("android.settings.WIFI_SETTINGS");
+    }
+
     private static void LaunchIntent(string intentId, bool closeApp = false)
     {
         if (Application.isMobilePlatform)
@@ -430,8 +449,39 @@ public class AndroidLinker : MonoBehaviour
         #if UNITY_IOS
         Application.OpenURL("itms-apps://itunes.apple.com");
         #else
-        LaunchCategory("android.intent.category.APP_MARKET");
+        // the device's own store first: Amazon's on Fire TV, otherwise Google Play, then the other makers' stores,
+        // then whatever the system calls its store, then any app that opens market:// links
+        bool amazon = false;
+        try { using var build = new AndroidJavaClass("android.os.Build"); amazon = (build.GetStatic<string>("MANUFACTURER") ?? "").ToLowerInvariant().Contains("amazon"); }
+        catch (Exception) { }
+        var stores = new List<string> { "com.android.vending", "com.amazon.venezia", "com.huawei.appmarket", "com.sec.android.app.samsungapps", "com.xiaomi.mipicks", "com.xiaomi.market", "cm.aptoidetv.pt", "com.aurora.store" };
+        if (amazon) { stores.Remove("com.amazon.venezia"); stores.Insert(0, "com.amazon.venezia"); }
+        foreach (var store in stores)
+        {
+            if (TryLaunch(store)) return;
+        }
+        if (LaunchCategory("android.intent.category.APP_MARKET")) return;
+        Application.OpenURL("market://search?q=apps");
         #endif
+    }
+
+    // starts a package's launcher (phone or TV) activity; false when it isn't installed or can't be opened
+    private static bool TryLaunch(string bundleId)
+    {
+        if (!Application.isMobilePlatform) return false;
+        try
+        {
+            using var intent = packageManager.Call<AndroidJavaObject>("getLeanbackLaunchIntentForPackage", bundleId)
+                               ?? packageManager.Call<AndroidJavaObject>("getLaunchIntentForPackage", bundleId);
+            if (intent == null) return false;
+            currentActivity.Call("startActivity", intent);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.Log("[Launch] " + bundleId + " couldn't open: " + e.Message);
+            return false;
+        }
     }
 
     private static void OpenGallery()
@@ -439,6 +489,16 @@ public class AndroidLinker : MonoBehaviour
         #if UNITY_IOS
         Application.OpenURL("photos-redirect://");
         #else
+        // a TV has no gallery app: the Photo Channel is Google Photos' website inside Revo
+        if (TVMode.IsTV)
+        {
+            try
+            {
+                using var h = new AndroidJavaClass("com.karuzohikari.revotv.RevoTV");
+                if (h.CallStatic<bool>("openPhotos", currentActivity, PREFS.MusicVolume.GetFloat())) return;
+            }
+            catch (System.Exception) { }
+        }
         LaunchCategory("android.intent.category.APP_GALLERY");
         #endif
     }
@@ -462,7 +522,7 @@ public class AndroidLinker : MonoBehaviour
         #if UNITY_IOS
         Application.OpenURL("music://");
         #else
-        LaunchApp("org.dolphinemu.dolphinemu",true);
+        TVDisc.Open(); // Dolphin itself, its bundled installer on 64-bit devices, or a plain "this TV can't run it"
         #endif
     }
     
@@ -474,12 +534,13 @@ public class AndroidLinker : MonoBehaviour
         // We first try to launch Vanced cause, y'know
         LaunchApp("app.revanced.android.youtube", actionIfNotAvailable: () => {
             // Otherwise we launch regular YouTube
-            LaunchApp("com.google.android.youtube", true);
+            // Android TV builds first (YouTube for TV, SmartTube), then the phone app
+            LaunchApp("com.google.android.youtube.tv", actionIfNotAvailable: () => LaunchApp("com.teamsmart.videomanager.tv", actionIfNotAvailable: () => LaunchApp("com.google.android.youtube", true)));
         });
         #endif
     }
 
-    private static void LaunchCategory(string categoryId)
+    private static bool LaunchCategory(string categoryId)
     {
         if (Application.isMobilePlatform)
         {
@@ -489,14 +550,40 @@ public class AndroidLinker : MonoBehaviour
                 AndroidJavaObject intentObject = intentClass.CallStatic<AndroidJavaObject>("makeMainSelectorActivity",
                     "android.intent.action.MAIN", categoryId);
                 currentActivity.Call("startActivity", intentObject);
+                return true;
             }
             catch (Exception e)
             {
                 Debug.Log(e);
             }
         }
+        return false;
     }
     
+    // Regular launcher apps plus TV-only (leanback) apps, one entry per package
+    private static List<AndroidJavaObject> QueryLauncherActivities()
+    {
+        var result = new List<AndroidJavaObject>();
+        var seen = new HashSet<string>();
+        foreach (string category in new[] { "android.intent.category.LAUNCHER", "android.intent.category.LEANBACK_LAUNCHER" })
+        {
+            AndroidJavaObject intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.MAIN");
+            intent.Call<AndroidJavaObject>("addCategory", category);
+            AndroidJavaObject list = packageManager.Call<AndroidJavaObject>("queryIntentActivities", intent, 0);
+            int size = list.Call<int>("size");
+            for (int i = 0; i < size; i++)
+            {
+                AndroidJavaObject info = list.Call<AndroidJavaObject>("get", i);
+                string pkg = info.Get<AndroidJavaObject>("activityInfo").Get<string>("packageName");
+                if (seen.Add(pkg))
+                {
+                    result.Add(info);
+                }
+            }
+        }
+        return result;
+    }
+
     public bool IsAppCountAccurate()
     {
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
@@ -509,11 +596,7 @@ public class AndroidLinker : MonoBehaviour
             return apps.Count > 0;
         }
 
-        AndroidJavaObject intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.MAIN");
-        intent.Call<AndroidJavaObject>("addCategory","android.intent.category.LAUNCHER");
-        AndroidJavaObject packages = packageManager.Call<AndroidJavaObject>("queryIntentActivities", intent, 0);
-            
-        int count = packages.Call<int>("size");
+        int count = QueryLauncherActivities().Count;
         return cachedAppLength == count;
     }
     
@@ -548,11 +631,8 @@ public class AndroidLinker : MonoBehaviour
             }
 
             // android programs
-            AndroidJavaObject intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.MAIN");
-            intent.Call<AndroidJavaObject>("addCategory","android.intent.category.LAUNCHER");
-            AndroidJavaObject packages = packageManager.Call<AndroidJavaObject>("queryIntentActivities", intent, 0);
-            
-            int count = packages.Call<int>("size");
+            List<AndroidJavaObject> packages = QueryLauncherActivities();
+            int count = packages.Count;
             if (cachedAppLength == count)
             {
                 // No changes have been made to the apps, no need to re-retrieve them
@@ -569,7 +649,7 @@ public class AndroidLinker : MonoBehaviour
             int appNumber = 0;
             while (appNumber < count)
             {
-                AndroidJavaObject currentObject = packages.Call<AndroidJavaObject>("get", appNumber);
+                AndroidJavaObject currentObject = packages[appNumber];
                 AppInfo appInfo = GetAppInfo(packageManager, currentObject);
                 if (appInfo != null)
                 {

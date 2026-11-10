@@ -20,8 +20,10 @@ namespace SettingsViews
 
         private void OnSelectedApp(AppInfo appInfo)
         {
+            // TV: an app picked for an empty slot becomes its channel right away
+            if (TVQuickAdd.Finish(currentChannel, appInfo)) return;
             currentChannel.SetAppInfo(appInfo);
-            
+
             // now we setup the icon and banner, if they haven't been setup yet
             if (string.IsNullOrEmpty(currentChannel.iconName))
             {
@@ -35,6 +37,12 @@ namespace SettingsViews
                 currentChannel.Save();
                 BackToEdit();
             }
+        }
+
+        public override void ClickedBack()
+        {
+            if (TVQuickAdd.Cancel(currentChannel)) return;
+            base.ClickedBack();
         }
     }
 }

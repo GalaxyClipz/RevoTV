@@ -51,10 +51,22 @@ public class ThemedTransform : ThemedElement
         else
         {
             rectTransform.position = GetOriginalPosition(trans) + offset;
+            usedCanvas = AppController._instance.gameCanvas.rect.size;
         }
         rectTransform.localEulerAngles = originalRotation + rotation;
         rectTransform.localScale = scale;
         // rectTransform.ForceUpdateRectTransforms();
+    }
+
+    // placed from the screen's corners: the screen's size settles after the first placing at start-up (the theme refresh a few
+    // seconds later then moved the Settings / SD buttons = the bar "jumped"), so it is placed again as soon as the size changes
+    private Vector2 usedCanvas;
+    private void LateUpdate()
+    {
+        if (usedCanvas == Vector2.zero || (Time.frameCount & 3) != 0) return;
+        var app = AppController._instance;
+        if (app == null || app.gameCanvas == null) return;
+        if (app.gameCanvas.rect.size != usedCanvas) { usedCanvas = Vector2.zero; UpdatePosition(); }
     }
 
     private Vector3 GetOriginalPosition(ThemeTransform position)

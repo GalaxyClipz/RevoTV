@@ -26,14 +26,16 @@ namespace Misc
         {
             GameObject prefab = GameObject.Instantiate(SettingsController._instance.preferencePrefab, SettingsController._instance.optionsHolder);
 
-            prefab.GetComponent<Button>().onClick.AddListener(() => { PopupController.ShowPopup(description); });
+            // on a TV the whole row is the switch (a remote has no separate checkbox click); phones keep the info popup
+            Button rowButton = prefab.GetComponent<Button>();
+            if (!TVMode.IsTV) rowButton.onClick.AddListener(() => { PopupController.ShowPopup(description); });
 
             prefab.transform.Find("Elements").Find("TitleHolder").Find("Title").gameObject
                 .GetComponent<TextMeshProUGUI>().text = TextController.GetTranslation(buttonTitle);
 
             StaticUtils.ChangeBooleanImage(prefab, preference.GetBool());
 
-            prefab.transform.Find("Elements").Find("ImageHolder").GetComponent<Button>().onClick.AddListener(() =>
+            UnityAction flip = () =>
             {
                 bool newBool = !preference.GetBool();
                 preference.SetBool(newBool);
@@ -41,7 +43,9 @@ namespace Misc
                 StaticUtils.ChangeBooleanImage(prefab, newBool);
 
                 callback?.Invoke();
-            });
+            };
+            prefab.transform.Find("Elements").Find("ImageHolder").GetComponent<Button>().onClick.AddListener(flip);
+            if (TVMode.IsTV) rowButton.onClick.AddListener(flip);
         }
 
         public static void SpawnPreference_Int(string buttonTitle, string description, UnityIntPreference preference, int min,
@@ -250,6 +254,33 @@ namespace Misc
                 string value = dropdown.options[index].text;
                 onSelect.Invoke(value, originalValue, dropdown); // we let us decide whether to change it or not in the override
             });
+        }
+
+        // TV: a drop-down list is fiddly with a remote. The last spawned drop-down becomes one button: each OK steps to the next
+        // value (1, 2, 3, 4, 1...), shown in place and saved straight away
+        public static void MakeLastDropdownCycle(UnityAction explain = null)
+        {
+            var holder = SettingsController._instance.optionsHolder;
+            if (holder == null || holder.childCount == 0) return;
+            var row = holder.GetChild(holder.childCount - 1);
+            var dd = row.GetComponentInChildren<TMP_Dropdown>(true);
+            if (dd == null || dd.options.Count < 2) return;
+            dd.enabled = false; // no list pops open
+            if (dd.targetGraphic != null) dd.targetGraphic.raycastTarget = false; // the whole row is the button
+            UnityAction step = () =>
+            {
+                dd.value = (dd.value + 1) % dd.options.Count; // fires the same save as picking it from the list
+                dd.RefreshShownValue();
+            };
+            // OK on the row (where the light lands) steps to the next value; holding OK still explains it
+            var rowButton = row.GetComponent<Button>();
+            if (rowButton != null)
+            {
+                rowButton.onClick = new Button.ButtonClickedEvent();
+                rowButton.onClick.AddListener(step);
+                var lc = row.GetComponent<LongClickButton>();
+                if (lc != null && explain != null) { lc.onLongClick.RemoveAllListeners(); lc.onLongClick.AddListener(explain); }
+            }
         }
 
         public static void SpawnPreference_FloatSlider(string buttonTitle, string description,

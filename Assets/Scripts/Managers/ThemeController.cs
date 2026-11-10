@@ -130,7 +130,8 @@ public class ThemeController : MonoBehaviour
 
     private void Update()
     {
-        if (isInEditMode && Input.GetMouseButtonDown(0) && IsMenuClosed() && !IsInsideButtons())
+        WatchGlass();
+        if (isInEditMode && RInput.GetMouseButtonDown(0) && IsMenuClosed() && !IsInsideButtons())
         {
             OpenSelection();
         }
@@ -148,7 +149,7 @@ public class ThemeController : MonoBehaviour
 
     private bool IsInsideButtons()
     {
-        Vector2 pos = CameraController._instanceOverlay.GetWorldPosition(Input.mousePosition);
+        Vector2 pos = CameraController._instanceOverlay.GetWorldPosition(RInput.mousePosition);
         return StaticUtils.IsInsideTransform(pencilButton, pos, offset) ||
                StaticUtils.IsInsideTransform(handButton, pos, offset) ||
                StaticUtils.IsInsideTransform(openEditorButton, pos, offset);
@@ -165,6 +166,12 @@ public class ThemeController : MonoBehaviour
     public void LoadCurrentTheme(bool reloadAudio = true)
     {
         // we load the theme whose name is saved on the settings
+        // Glass 2026 never loads a custom theme (the choice stays saved for the classic menu)
+        if (TVMode.IsTV && TVGlass.On && defaultTheme != null)
+        {
+            SetNewTheme(defaultTheme, false, reloadAudio);
+            return;
+        }
         Theme theme = GetOrLoadTheme(PREFS.CurrentTheme.GetString());
         if (theme != null)
         {
@@ -200,7 +207,17 @@ public class ThemeController : MonoBehaviour
             theme.UpdateMaps();
             currentTheme = theme;
 
-            yield return new WaitUntil(currentTheme.FinishedLoading);
+            // only a theme picked later may be given up on: at boot (and for the built-in one) there is nothing to fall back to, so wait as before
+            bool mayGiveUp = previous is not null && !ReferenceEquals(theme, defaultTheme);
+            float waited = 0f;
+            while (!theme.FinishedLoading() && (!mayGiveUp || waited < 45f)) { waited += Time.unscaledDeltaTime; yield return null; }
+            if (!theme.FinishedLoading())
+            {
+                // a theme that never finishes loading must not stay half-applied: keep the look the menu already had
+                currentTheme = previous;
+                Debug.LogWarning("Theme never finished loading; kept the previous one");
+                yield break;
+            }
             
             // and we change the elements already loaded
             TriggerThemeReload();
@@ -288,6 +305,44 @@ public class ThemeController : MonoBehaviour
         return currentTheme;
     }
 
+    public ThemeTransform GetDefaultThemeTransform(ThemeOffsets category)
+    {
+        if (defaultTheme is null || !defaultTheme.FinishedLoading()) return null;
+        if (!defaultMapsReady) { defaultMapsReady = true; defaultTheme.UpdateMaps(); }
+        return defaultTheme.GetThemeTransform(category);
+    }
+
+    // the normal look, and loaded: pieces are only moved for it once it is really the one on screen (not while a theme is still starting up)
+    public bool IsDefaultLookReady()
+    {
+        return currentTheme != null && currentTheme.FinishedLoading() && IsDefaultLook();
+    }
+
+    // the normal look (the built-in theme, however it was loaded), as opposed to a downloaded or custom one
+    public bool IsDefaultLook()
+    {
+        var c = currentTheme;
+        return c == null || c.isDefaultTheme || ReferenceEquals(c, defaultTheme) || (defaultTheme != null && c.importedFileName == defaultTheme.importedFileName);
+    }
+
+    // Downloaded and custom themes dress the classic menu only: with Glass 2026 on, everything draws from the default theme
+    private bool defaultMapsReady;
+    public Theme GetVisualTheme()
+    {
+        if (!TVGlass.On || defaultTheme is null || !defaultTheme.FinishedLoading()) return currentTheme;
+        if (!defaultMapsReady) { defaultMapsReady = true; defaultTheme.UpdateMaps(); }
+        return defaultTheme;
+    }
+
+    private bool lastGlass;
+    private void WatchGlass()
+    {
+        bool g = TVGlass.On;
+        if (g == lastGlass) return;
+        lastGlass = g;
+        if (currentTheme != null && !ReferenceEquals(currentTheme, defaultTheme)) TriggerThemeReload();
+    }
+
     public static Color GetDefaultColor(ThemeColor themeColor)
     {
         return _instance.defaultTheme.GetColor(themeColor);
@@ -295,42 +350,60 @@ public class ThemeController : MonoBehaviour
 
     public static Color GetColor(ThemeColor themeColor)
     {
-        return _instance.currentTheme.GetColor(themeColor);
+        // TV: the start-up page keeps Revo's own pictures (TvKeepsOwn), so it keeps Revo's own colours too. A theme's colours
+        // were picked for its own pictures: on Revo's white page the Wii U theme's white text vanished
+        if (TVMode.IsTV && IsWarningColor(themeColor) && _instance.defaultTheme is not null && _instance.defaultTheme.FinishedLoading())
+            return _instance.defaultTheme.GetColor(themeColor);
+        return _instance.GetVisualTheme().GetColor(themeColor);
     }
+    private static bool IsWarningColor(ThemeColor c) => c >= ThemeColor.WarningScreenTitleIcon && c <= ThemeColor.WarningScreenBackground;
     
     public static ThemeTransform GetThemeTransform(ThemeOffsets category)
     {
-        return _instance.currentTheme.GetThemeTransform(category);
+        // on a TV the mail button stays where the normal look has it, whatever a custom theme says
+        if (TVMode.IsTV && (category == ThemeOffsets.MailButton || category == ThemeOffsets.MailClip || category == ThemeOffsets.MailShadow)
+            && _instance.defaultTheme is not null && _instance.defaultTheme.FinishedLoading())
+        {
+            if (!_instance.defaultMapsReady) { _instance.defaultMapsReady = true; _instance.defaultTheme.UpdateMaps(); }
+            return _instance.defaultTheme.GetThemeTransform(category);
+        }
+        return _instance.GetVisualTheme().GetThemeTransform(category);
     }
     
     public static ThemeText GetThemeText(SystemLanguage language)
     {
-        return _instance.currentTheme.GetThemeText(language);
+        return _instance.GetVisualTheme().GetThemeText(language);
     }
     
     public static ThemeTexture GetThemeTexture(string name)
     {
-        return _instance.currentTheme.GetThemeTexture(name);
+        return _instance.GetVisualTheme().GetThemeTexture(name);
     }
     
     public static ThemeFont GetThemeFont(ThemeColor place)
     {
-        return _instance.currentTheme.GetThemeFont(place);
+        return _instance.GetVisualTheme().GetThemeFont(place);
     }
     
     public static ThemeFont GetThemeFont(string fontName)
     {
-        return _instance.currentTheme.GetThemeFont(fontName);
+        return _instance.GetVisualTheme().GetThemeFont(fontName);
     }
+
+    // the first screen of the app (health and safety / welcome) is drawn by the app itself on a TV: a theme's picture for it was made
+    // for a phone's dialog box and shows stretched over the whole screen
+    private static bool TvKeepsOwn(string n) => TVMode.IsTV && (n == "warning" || n == "warning_background" || n == "warning_background2");
 
     public static Sprite GetTexture(Texture texture)
     {
-        return _instance.currentTheme.GetTexture(texture);
+        if (texture != null && TvKeepsOwn(texture.name)) return null;
+        return _instance.GetVisualTheme().GetTexture(texture);
     }
-    
+
     public static Sprite GetTexture(string name)
     {
-        return _instance.currentTheme.GetTexture(name);
+        if (TvKeepsOwn(name)) return null;
+        return _instance.GetVisualTheme().GetTexture(name);
     }
 
     public static AudioClip GetAudio(AudioClip audio)
@@ -340,9 +413,10 @@ public class ThemeController : MonoBehaviour
     
     public static TMP_FontAsset GetOriginalFont(string name)
     {
+        if (_instance == null || _instance.allFonts == null) return null;
         foreach (TMP_FontAsset font in _instance.allFonts)
         {
-            if (font.name.Equals(name))
+            if (font != null && font.name.Equals(name))
             {
                 return font;
             }
@@ -679,7 +753,7 @@ public class ThemeController : MonoBehaviour
         isViewingTexts = false;
 
         // we check which UI elements we have hit
-        Vector2 worldPos = CameraController._instance.GetWorldPosition(Input.mousePosition);
+        Vector2 worldPos = CameraController._instance.GetWorldPosition(RInput.mousePosition);
         Dictionary<ThemeCategories, List<ThemeColor>> colors = ThemeCategories.GetEmptyCategories();
         List<ThemedImage> themedImages = new List<ThemedImage>();
         List<ThemeOffsets> transforms = new List<ThemeOffsets>();

@@ -118,6 +118,8 @@ public class CameraController : MonoBehaviour
     
     public static void LockHorizontalMode()
     {
+        // a TV cannot rotate: forcing portrait only squashes the window into a strip
+        if (TVMode.IsTV) return;
         _instance.AllowHorizontalMode(false);
     }
 
@@ -156,6 +158,7 @@ public class CameraController : MonoBehaviour
 
     public void ForcePortrait()
     {
+        if (TVMode.IsTV) return;
         bool refreshCanvas = GetOrientation() != ScreenOrientation.Portrait;
         Debug.Log($"Should refresh? {refreshCanvas} - {_instance.currentOrientation}");
         _instance.currentOrientation = ScreenOrientation.Portrait;
@@ -315,15 +318,15 @@ public class CameraController : MonoBehaviour
 
     public Vector2 GetWorldMousePosition()
     {
-        return GetWorldPosition(Input.mousePosition);
+        return GetWorldPosition(RInput.mousePosition);
     }
 
     public Vector2 GetMiddleCursor()
     {
-        if (Application.isMobilePlatform)
+        if (TVMode.UseTouch)
         {
             Vector2 positionVector = new Vector2();
-            int touchCount = Input.touchCount;
+            int touchCount = RInput.touchCount;
             if (touchCount <= 0)
             {
                 return positionVector;

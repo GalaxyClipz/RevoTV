@@ -81,7 +81,8 @@ namespace ShopViews
             string id = PREFS.UserId.GetString();
             if (string.IsNullOrEmpty(id))
             {
-                PopupController.ShowPopup("popup.logoutnoaccount");
+                // nobody signed in: this is where signing in starts
+                ShopController._instance.userAuthView.Show();
             }
             else
             {

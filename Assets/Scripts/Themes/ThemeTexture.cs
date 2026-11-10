@@ -65,6 +65,7 @@ public class ThemeTexture
     
     private void LoadGif()
     {
+        if (TVMode.IsTV) { AppController._instance.StartCoroutine(LoadGifTv()); return; }
         List<Texture2D> myFrames = new List<Texture2D>();
         StaticUtils.LoadGif(filePath, myFrames, gifFrameDelays);
         foreach(Texture2D tex in myFrames)
@@ -81,10 +82,76 @@ public class ThemeTexture
         finishedLoading = true;
     }
 
+    // TV: a theme's animated pictures are decoded off the main thread and made smaller there (a big theme's GIFs froze the menu for
+    // many seconds while every frame was decoded at full size); the frames then become textures a few per frame
+    private System.Collections.IEnumerator LoadGifTv()
+    {
+        string fp = filePath; int cap = textureName == "wallpaper" ? 1280 : 512;
+        var frames = new List<(Color32[] px, int w, int h, float d)>();
+        var job = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                using (var gs = new GifStream(fp))
+                    while (gs.HasMoreData)
+                    {
+                        if (gs.CurrentToken != GifStream.Token.Image) { gs.SkipToken(); continue; }
+                        var im = gs.ReadImage();
+                        int w = gs.Header.width, h = gs.Header.height, m = Mathf.Max(w, h);
+                        Color32[] px;
+                        if (m <= cap) px = (Color32[]) im.colors.Clone();
+                        else
+                        {
+                            float k = (float) m / cap; int nw = Mathf.Max(1, (int) (w / k)), nh = Mathf.Max(1, (int) (h / k));
+                            px = new Color32[nw * nh]; var src = im.colors;
+                            for (int y = 0; y < nh; y++) { int sy = Mathf.Min(h - 1, (int) ((y + 0.5f) * k)) * w; for (int x = 0; x < nw; x++) px[y * nw + x] = src[sy + Mathf.Min(w - 1, (int) ((x + 0.5f) * k))]; }
+                            w = nw; h = nh;
+                        }
+                        frames.Add((px, w, h, im.SafeDelaySeconds));
+                    }
+            }
+            catch (Exception e) { Debug.Log("Error while loading gif: " + e); }
+        });
+        while (!job.IsCompleted) yield return null;
+        int n = 0;
+        foreach (var f in frames)
+        {
+            var tex = new Texture2D(f.w, f.h, TextureFormat.RGBA32, false) { name = textureName };
+            tex.SetPixels32(f.px); tex.Apply(false, true);
+            var sp = Sprite.Create(tex, new Rect(0f, 0f, f.w, f.h), new Vector2(0.5f, 0.5f)); sp.name = textureName;
+            gifFrames.Add(sp); gifFrameDelays.Add(f.d);
+            if (++n % 4 == 0) yield return null;
+        }
+        texture = gifFrames.Count > 0 ? gifFrames[0] : null;
+        finishedLoading = true;
+    }
+
+    // a TV (1.7 GB, drawn at 720p) never needs a theme's 1024-2400 px pictures at full size: a big theme took 600+ MB and the whole projector
+    // lagged. Pictures are redrawn smaller (wallpapers up to 1280 px, everything else 512), without mip levels, and the big original is freed.
+    private Texture2D TvShrink(Texture2D src)
+    {
+        int cap = textureName == "wallpaper" ? 1280 : 512;
+        int w = src.width, h = src.height, m = Mathf.Max(w, h);
+        if (m <= cap) { try { src.Apply(false, true); } catch (System.Exception) { } return src; }
+        float k = (float) cap / m;
+        int nw = Mathf.Max(1, Mathf.RoundToInt(w * k)), nh = Mathf.Max(1, Mathf.RoundToInt(h * k));
+        var rt = RenderTexture.GetTemporary(nw, nh, 0, RenderTextureFormat.ARGB32);
+        var prev = RenderTexture.active;
+        Graphics.Blit(src, rt);
+        RenderTexture.active = rt;
+        var small = new Texture2D(nw, nh, TextureFormat.RGBA32, false);
+        small.ReadPixels(new Rect(0, 0, nw, nh), 0, 0);
+        small.Apply(false, true);
+        RenderTexture.active = prev;
+        RenderTexture.ReleaseTemporary(rt);
+        GameObject.Destroy(src);
+        return small;
+    }
+
     private IEnumerator LoadImage(string path)
     {
         string finalPath = "file://" + path + "/" + imageFileName;
-        using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(finalPath,true))
+        using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(finalPath, !TVMode.IsTV))
         {
             yield return uwr.SendWebRequest();
 
@@ -96,6 +163,7 @@ public class ThemeTexture
             else
             {
                 Texture2D tex = ((DownloadHandlerTexture)uwr.downloadHandler).texture;
+                if (tex != null && TVMode.IsTV) tex = TvShrink(tex);
                 if (tex != null)
                 {
                     texture = Sprite.Create(tex, new Rect(0.0f, 0.0f, tex.width, tex.height), new Vector2(0.5f, 0.5f));

@@ -572,6 +572,12 @@ namespace ShopViews
             }
             else
             {
+                // posted from a TV: marked [TV] so other TV owners can find it (the hub has no tags, so the name carries it)
+                if (TVMode.IsTV)
+                {
+                    if (!name.StartsWith("[TV]")) name = "[TV] " + name;
+                    if (!description.Contains("Made on a TV")) description += "\n\nMade on a TV with RevoTV (looks best on TVs and projectors).";
+                }
                 string themePath = _instance.GetThemeFilePath(selectedTheme);
                 string accentColor = ColorUtility.ToHtmlStringRGBA(selectedTheme.GetColor(ThemeColor.MainAccent));
                 response = await _instance.SendRequest(WebRequestController.SendCreateTheme(name, description, accentColor,

@@ -19329,7 +19329,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ab901eb0053597f49b6d9f94e6aedd9c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  id: general.appname
+  id: settings.button.app
   canBeRefreshed: 1
 --- !u!1 &527076590
 GameObject:

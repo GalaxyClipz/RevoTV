@@ -39,7 +39,8 @@ public class ThemeFont
             
             // now we set the original font as the fallback
             List<TMP_FontAsset> fallback = new List<TMP_FontAsset>();
-            fallback.Add(ThemeController.GetOriginalFont(originalFontName));
+            var orig = ThemeController.GetOriginalFont(originalFontName);
+            if (orig != null) fallback.Add(orig);
             font.fallbackFontAssetTable = fallback;
         }
         else

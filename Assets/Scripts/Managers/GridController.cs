@@ -65,12 +65,52 @@ public class GridController : MonoBehaviour
     {
         RefreshSdCard();
         RefreshGrids();
+        if (TVMode.IsTV) StartCoroutine(WarmPages());
+    }
+
+    // TV: every page has its own bar (curve, time, date), switched on the first time the page is visited. That first switch-on
+    // runs each themed piece's one-time setup (slow on a projector: 200-300 ms frames) and puts the clock at the theme's spot a
+    // frame late, so the first page change after a fresh start stuttered and the time hopped sideways once. A moment after the
+    // menu appears, the other pages' bars (off screen) are switched on for a second and put away again, so that's done early.
+    private IEnumerator WarmPages()
+    {
+        var app = AppController._instance;
+        yield return new WaitUntil(() => app != null && app.finishedLoading && app.mainView != null && app.mainView.activeInHierarchy
+                                         && (app.warningView == null || !app.warningView.activeInHierarchy));
+        yield return new WaitForSecondsRealtime(2.5f);
+        while (isChangingGrid || currentGrid == null) yield return null;
+        var warmed = new List<Grid>();
+        // every page's clock sits on the same spot of the screen (it never slides): the warmed pages' clocks stay see-through, or one
+        // of them showed over the real one for a frame (bigger, before its theme size) = the time "jumping" once after start-up
+        var hush = new Dictionary<Grid, CanvasGroup>();
+        foreach (var g in grids) if (g != null && g != currentGrid)
+        {
+            var cg = g.clockTransform != null ? (g.clockTransform.GetComponent<CanvasGroup>() ?? g.clockTransform.gameObject.AddComponent<CanvasGroup>()) : null;
+            if (cg != null) { cg.alpha = 0f; hush[g] = cg; }
+            g.EnableBackground(); warmed.Add(g);
+        }
+        if (warmed.Count == 0) yield break;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        void Hush() { foreach (var kv in hush) if (kv.Value != null) kv.Value.alpha = kv.Key == currentGrid && !isChangingGrid ? 1f : 0f; }
+        for (float until = Time.unscaledTime + 2f; Time.unscaledTime < until;) { Hush(); yield return null; }
+        while (isChangingGrid) { Hush(); yield return null; }
+        foreach (var g in warmed) if (g != null && g != currentGrid) g.FixPositions(true);
+        Hush(); yield return null;
+        while (isChangingGrid) { Hush(); yield return null; }
+        foreach (var g in warmed) if (g != null && g != currentGrid) g.DisableBackground();
+        yield return null; yield return null; // the clocks switch off in their own next Update (Clock.shouldDisable)
+        foreach (var kv in hush) if (kv.Value != null) kv.Value.alpha = 1f;
+        Debug.Log("[Grid] warmed " + warmed.Count + " pages' bars in " + watch.ElapsedMilliseconds + " ms");
     }
 
     public void RefreshAppNumbers()
     {
         GRIDSIZE size = GetChosenGridSize();
-        if (size != GRIDSIZE.CUSTOM)
+        if (TVMode.IsTV && size != GRIDSIZE.CUSTOM)
+        {
+            SetAppNumbers(3, 4); // the Wii menu: 4 channels across, 3 down
+        }
+        else if (size != GRIDSIZE.CUSTOM)
         {
             int vertical = CalculateVerticalYApps(size);
             int horizontal = CalculateVerticalXApps(size);
@@ -286,6 +326,151 @@ public class GridController : MonoBehaviour
         return 2;
     }
 
+    // TV: the bar along the bottom (curve, time, date, buttons) must not move while the pages slide, whatever look or theme
+    // draws it. At the end of the frame the slide starts in, the bar area of the screen is copied on the GPU (no read-back) into a
+    // texture, and that picture is shown on top of the bar until the slide has settled. Works the same for every look and theme.
+    private static RenderTexture barShot;
+    private static UnityEngine.UI.RawImage barImg;
+    private static int barHolds; // page changes in progress (a quick second one keeps the first picture)
+
+    private static bool FreezeBar(Grid page)
+    {
+        var app = AppController._instance;
+        if (app == null || app.overlayCanvas == null || page == null) return false;
+        if (barHolds > 0 && barImg != null && barImg.enabled) { barHolds++; return true; }
+        var canvas = page.GetComponentInParent<Canvas>();
+        Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+        var cs = new UnityEngine.Vector3[4];
+        // the band: from the top of the page's bar parts down to the screen's bottom, but never over the lowest tiles
+        float top = 0f;
+        foreach (var t in new[] { page.transform.Find("BottomClip"), page.backMask != null && page.backMask.activeInHierarchy ? page.backMask.transform : null })
+        {
+            if (!(t is RectTransform rt)) continue;
+            rt.GetWorldCorners(cs);
+            foreach (var c in cs) top = Mathf.Max(top, RectTransformUtility.WorldToScreenPoint(cam, c).y);
+        }
+        float tiles = float.MaxValue;
+        foreach (var h in page.GetComponentsInChildren<ChannelHandler>(false))
+        {
+            ((RectTransform) h.transform).GetWorldCorners(cs);
+            foreach (var c in cs) tiles = Mathf.Min(tiles, RectTransformUtility.WorldToScreenPoint(cam, c).y);
+        }
+        if (top <= 0f) top = Screen.height * 0.3f;
+        if (tiles < float.MaxValue) top = Mathf.Min(top, tiles - 2f);
+        top = Mathf.Clamp(top, 8f, Screen.height * 0.5f);
+
+        if (barShot == null || barShot.width != Screen.width || barShot.height != Screen.height)
+        {
+            if (barShot != null) { barShot.Release(); Destroy(barShot); }
+            barShot = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGB32) { name = "Still Bar" };
+        }
+        ScreenCapture.CaptureScreenshotIntoRenderTexture(barShot);
+        if (barImg == null)
+        {
+            var go = new GameObject("Still Bar", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
+            go.transform.SetParent(app.overlayCanvas, false);
+            barImg = go.GetComponent<UnityEngine.UI.RawImage>();
+            barImg.raycastTarget = false;
+        }
+        // just above the screen-wide scanlines/vignette (the picture already has them: under them they'd be applied twice and the bar
+        // looked darker while the pages slid), still under the hover light and the pointer
+        var fx = TVScreenFx.Root;
+        if (fx != null && fx.parent == barImg.transform.parent) barImg.transform.SetSiblingIndex(fx.GetSiblingIndex() + (barImg.transform.GetSiblingIndex() < fx.GetSiblingIndex() ? 0 : 1));
+        else barImg.transform.SetAsFirstSibling();
+        float v = top / Screen.height;
+        var irt = barImg.rectTransform;
+        irt.anchorMin = Vector2.zero; irt.anchorMax = new Vector2(1f, v); irt.offsetMin = irt.offsetMax = Vector2.zero;
+        barImg.texture = barShot;
+        // on Vulkan/D3D-style platforms the copy is upside down
+        barImg.uvRect = SystemInfo.graphicsUVStartsAtTop ? new Rect(0f, 1f, 1f, -v) : new Rect(0f, 0f, 1f, v);
+        barImg.enabled = true;
+        TVScreenFx.SweepOver(irt);
+        barHolds = 1;
+        TVVideoWall.HoldForSlide(true);
+        return true;
+    }
+
+    /// <summary>TV: runs work (a theme refresh) behind a still picture of the bar, so its clock doesn't visibly jump while it resettles.</summary>
+    public IEnumerator StillBarWhile(System.Action work, int frames)
+    {
+        UnityEngine.UI.Image sep = null; float sepA = 1f;
+        bool fresh = barHolds == 0;
+        if (fresh)
+        {
+            yield return null;
+            sep = BarColon();
+            if (sep != null) { var c0 = sep.color; sepA = c0.a; c0.a = 0f; sep.color = c0; }
+        }
+        yield return new WaitForEndOfFrame();
+        bool frozen = TVMode.IsTV && currentGrid != null && FreezeBar(currentGrid);
+        if (sep != null) { var c1 = sep.color; c1.a = sepA; sep.color = c1; if (frozen) LiveColon(sep); }
+        try { work(); } catch (System.Exception e) { Debug.LogException(e); }
+        for (int i = 0; i < frames; i++) yield return null;
+        if (frozen) ThawBar();
+    }
+
+    private static void ThawBar()
+    {
+        barHolds = Mathf.Max(0, barHolds - 1);
+        if (barHolds == 0 && barImg != null) { barImg.enabled = false; TVScreenFx.SweepOver(null); TVVideoWall.HoldForSlide(false); }
+        if (barHolds == 0 && liveColon != null) { liveColon.enabled = false; colonSrc = null; }
+    }
+
+    // the clock's colon in the bar (classic and custom looks; 2026 draws its own clock)
+    private static UnityEngine.UI.Image BarColon()
+    {
+        if (TVGlass.On || _instance == null) return null;
+        // the pages' own clocks (looking through the whole scene for them cost ~30 ms on the frame the slide starts)
+        foreach (var gr in _instance.grids)
+        {
+            var ck = gr != null && gr.clockTransform != null ? gr.clockTransform.GetComponentInChildren<Clock>(false) : null;
+            if (ck == null) continue;
+            var s = ck.imageSeparator;
+            if (s == null || !s.isActiveAndEnabled) continue;
+            var cv = s.canvas; Camera cam = cv != null && cv.renderMode != RenderMode.ScreenSpaceOverlay ? cv.worldCamera : null;
+            var p = RectTransformUtility.WorldToScreenPoint(cam, s.rectTransform.position);
+            if (p.y < Screen.height * 0.45f && p.x > 0 && p.x < Screen.width) return s;
+        }
+        return null;
+    }
+
+    private static UnityEngine.UI.Image liveColon, colonSrc;
+    private static void LiveColon(UnityEngine.UI.Image src)
+    {
+        var app = AppController._instance; if (app == null || barImg == null) return;
+        var parent = (RectTransform) barImg.transform.parent;
+        if (liveColon == null)
+        {
+            var go = new GameObject("Still Bar Colon", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            go.transform.SetParent(parent, false);
+            liveColon = go.GetComponent<UnityEngine.UI.Image>(); liveColon.raycastTarget = false;
+        }
+        liveColon.transform.SetSiblingIndex(barImg.transform.GetSiblingIndex() + 1);
+        var cv = src.canvas; Camera cam = cv != null && cv.renderMode != RenderMode.ScreenSpaceOverlay ? cv.worldCamera : null;
+        var pc = parent.GetComponentInParent<Canvas>(); Camera pcam = pc != null && pc.renderMode != RenderMode.ScreenSpaceOverlay ? pc.worldCamera : null;
+        var cs = new Vector3[4]; src.rectTransform.GetWorldCorners(cs);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, RectTransformUtility.WorldToScreenPoint(cam, cs[0]), pcam, out var a);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, RectTransformUtility.WorldToScreenPoint(cam, cs[2]), pcam, out var b);
+        var rt = liveColon.rectTransform; rt.anchorMin = rt.anchorMax = parent.pivot; rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = (a + b) * 0.5f; rt.sizeDelta = new Vector2(Mathf.Abs(b.x - a.x), Mathf.Abs(b.y - a.y));
+        liveColon.sprite = src.sprite; liveColon.type = src.type; liveColon.preserveAspect = src.preserveAspect; liveColon.material = src.material;
+        liveColon.color = src.color; liveColon.enabled = true; colonSrc = src;
+    }
+
+    // the slowest frame of a page change (a stall there looks like the clock's colon freezing): logged once per change
+    private float slideUntil, slideWorst, slideStart, slideWorstAt;
+    private static readonly System.Diagnostics.Stopwatch slideWatch = new System.Diagnostics.Stopwatch();
+    private static string slideParts = "";
+    private void LateUpdate()
+    {
+        if (Time.unscaledTime < slideUntil) { if (Time.unscaledDeltaTime > slideWorst) { slideWorst = Time.unscaledDeltaTime; slideWorstAt = Time.unscaledTime - slideStart; } }
+        else if (slideWorst > 0f) { Debug.Log("[Grid] page change: slowest frame " + Mathf.RoundToInt(slideWorst * 1000f) + " ms at +" + Mathf.RoundToInt(slideWorstAt * 1000f) + " ms" + slideParts + " || slow frames" + TVFrameProbe.Report); slideWorst = 0f; slideParts = ""; TVFrameProbe.Report = ""; }
+        // blinks with the clocks' shared timer, not with the clock it was copied from: during several page changes in a row that
+        // page's clock is switched off when the first slide ends, and the colon stood still until the last one finished
+        if (liveColon != null && liveColon.enabled) { var c = liveColon.color; c.a = Clock.BlinkAlpha(); liveColon.color = c; }
+    }
+
+
     public void ChangeGrid(int grid, bool force = false, float duration = 0.5f)
     {
         if (!force && (grid < 0 || grid >= grids.Count || grid == currentGrid.number))
@@ -299,6 +484,7 @@ public class GridController : MonoBehaviour
     private IEnumerator _ChangeGrid(int grid, float duration)
     {
         Debug.Log($"Changing to grid {grid} in {duration} seconds.");
+        long p0 = TVFrameProbe.Begin();
         // First we clear the blue border of the handlers (if there's any)
         if (currentGrid is not null)
         {
@@ -307,9 +493,12 @@ public class GridController : MonoBehaviour
                 handler.isBeingHovered = false;
                 handler.HideBlueBorder();
             }
+            // installed channels too: their hover state used to stay behind and light up next to the real focus
+            foreach (AppHandler ah in currentGrid.GetComponentsInChildren<AppHandler>(true)) ah.MouseLeave();
         }
 
 
+        TVFrameProbe.End("leavehover", p0);
         // Then we proceed
         Grid previousGrid = currentGrid;
         currentGrid = grids[grid];
@@ -325,9 +514,34 @@ public class GridController : MonoBehaviour
             endValue = (float)currentGrid.number / (grids.Count - 1);
         }
 
+        // TV: the bar is shown as a still picture while the pages slide (see FreezeBar)
+        bool frozen = false;
+        slideUntil = Time.unscaledTime + duration + 0.6f; slideStart = Time.unscaledTime;
+        TVFrameProbe.ProbeStart = slideStart; TVFrameProbe.ProbeUntil = slideUntil;
+        if (TVMode.IsTV && duration > 0 && previousGrid != null)
+        {
+            UnityEngine.UI.Image sep = null; float sepA = 1f;
+            if (barHolds == 0)
+            {
+                yield return null; // after this frame's animations, so nothing re-shows the colon before the picture
+                sep = BarColon();
+                if (sep != null) { var c0 = sep.color; sepA = c0.a; c0.a = 0f; sep.color = c0; }
+                TVHoliday.HideForCapture(true);
+                TVScreenFx.HideSweepForCapture(true);
+            }
+            yield return new WaitForEndOfFrame();
+            slideWatch.Restart();
+            frozen = FreezeBar(previousGrid);
+            slideParts += " | capture " + slideWatch.ElapsedMilliseconds + " ms";
+            TVHoliday.HideForCapture(false);
+            TVScreenFx.HideSweepForCapture(false);
+            if (sep != null) { var c1 = sep.color; c1.a = sepA; sep.color = c1; if (frozen) LiveColon(sep); }
+        }
+
+        long p1 = TVFrameProbe.Begin();
         if (duration > 0)
         {
-            scrollRect.DOHorizontalNormalizedPos(endValue, duration);
+            scrollRect.DOHorizontalNormalizedPos(endValue, duration).SetEase(TVMode.IsTV ? Ease.OutQuart : Ease.OutQuad);
         }
         else
         {
@@ -350,6 +564,7 @@ public class GridController : MonoBehaviour
             }
         }
         
+        TVFrameProbe.End("slidestart", p1);
         yield return new WaitForSeconds(duration);
 
         // Here we check which arrows should be enabled
@@ -371,10 +586,13 @@ public class GridController : MonoBehaviour
             rightArrow.Hide();
         }
         
-        // And finally we clear the backgrounds
+        // And finally we clear the backgrounds (TV: only the pages the slide went over; the others are already put away)
+        slideWatch.Restart();
         foreach (Grid checkGrid in grids)
         {
-            checkGrid.FixPositions(true);
+            if (TVMode.IsTV && previousGrid != null && checkGrid != null && checkGrid != currentGrid
+                && !StaticUtils.IsWithinRange(checkGrid.number, previousGrid.number, currentGrid.number)) continue;
+            checkGrid.FixPositions(!TVMode.IsTV || checkGrid == currentGrid);
             if (checkGrid.number != currentGrid.number)
             {
                 checkGrid.DisableBackground();
@@ -384,7 +602,19 @@ public class GridController : MonoBehaviour
                 checkGrid.EnableBackground();
             }
         }
+        slideParts += " | end " + slideWatch.ElapsedMilliseconds + " ms";
         
+        // only the last of several quick page changes shows the pages' own copies again
+        if (frozen)
+        {
+            // the pages' own bars settle over the next frames (themes put their clocks back): the picture stays until they have
+            isChangingGrid = false;
+            for (int f = 0; f < 4; f++) yield return null;
+            slideParts += " | thaw at +" + Mathf.RoundToInt((Time.unscaledTime - slideStart) * 1000f) + " ms";
+            long tp = TVFrameProbe.Begin();
+            ThawBar();
+            TVFrameProbe.End("thaw", tp);
+        }
         isChangingGrid = false;
     }
 
@@ -431,6 +661,8 @@ public class GridController : MonoBehaviour
 
             AppHandler drawer = prefab.GetComponent<AppHandler>();
             drawer.Draw(channel);
+            // TV: a new tile starts at its home-grid size, not the prefab's (it used to show a wrong shape until the size check ran)
+            if (TVMode.IsTV) drawer.transform.localScale = ChannelController.HomeTileScale();
             return true;
         }
         catch (Exception e)
@@ -536,13 +768,13 @@ public class GridController : MonoBehaviour
         if (IsLiftingChannel())
         {
             bool shouldStop;
-            if (Application.isMobilePlatform)
+            if (TVMode.UseTouch)
             {
-                shouldStop = Input.touchCount == 0;
+                shouldStop = RInput.touchCount == 0;
             }
             else
             {
-                shouldStop = !Input.GetMouseButton(0) && !Input.GetMouseButton(1);
+                shouldStop = !RInput.GetMouseButton(0) && !RInput.GetMouseButton(1);
             }
 
             if (!shouldStop)
@@ -603,13 +835,20 @@ public class GridController : MonoBehaviour
         else
         {
             // we check for the back button
-            if (!AppController.IsTransitioning() && !isChangingGrid && scrollRect.gameObject.activeInHierarchy && Input.GetKeyDown(KeyCode.Escape)) {
+            // the menu must have been on screen, still, for a moment: the Back that closes a channel's preview (or that comes
+            // back from an app) only returns to the menu, at the tile you were on, never to page 1
+            bool steady = !AppController.IsTransitioning() && !isChangingGrid && (ChannelController._instance == null || ChannelController._instance.currentChannel == null) && scrollRect.gameObject.activeInHierarchy && !PopupController.IsPopupOpen() && Application.isFocused;
+            if (!steady) homeBusyAt = Time.unscaledTime;
+            if (steady && Time.unscaledTime - homeBusyAt > 0.5f && (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.JoystickButton1))
+                && !TVMove.ConsumesBack) { // Back that just cancelled a TV move
                 // we move to the first grid
                 AudioController.PlaySoundEffect(AudioLibrary._instance.CLICK_PLUSLESS);
                 ChangeGrid(0);
             }
         }
     }
+
+    private float homeBusyAt;
 
     private void CheckChannelOverArrow()
     {

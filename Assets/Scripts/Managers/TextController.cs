@@ -193,7 +193,7 @@ public class TextController : MonoBehaviour
         themeTranslations.Clear();
         
         // now we load them if found, only for our language (and English for the not found)
-        Theme currentTheme = ThemeController._instance.GetCurrentTheme();
+        Theme currentTheme = ThemeController._instance.GetVisualTheme();
         if (currentTheme is null)
         {
             return;

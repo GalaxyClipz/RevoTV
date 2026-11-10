@@ -28,7 +28,62 @@ namespace SettingsViews
             OptionsSpawner.SetupOption(id, _instance.optionsHolder);
             
             SpawnAnim(currentChannel, _instance.iconSourcePrefab, CHANNELTYPE.ICON);
-            SpawnAnim(currentChannel, _instance.bannerSourcePrefab, CHANNELTYPE.BANNER);
+            // the Forecast Channel's preview and its sound are built in (TVWeatherPreview): only its tile picture can change
+            if (!(TVMode.IsTV && TVTiles.IsBuiltInPreview(currentChannel)))
+            {
+                SpawnAnim(currentChannel, _instance.bannerSourcePrefab, CHANNELTYPE.BANNER);
+                SpawnPreviewSound();
+            }
+        }
+
+        // TV: whether this channel's preview plays a sound (sounds are added from the Channel Server page, a TV has no file picker)
+        private void SpawnPreviewSound()
+        {
+            if (!TVMode.IsTV || currentChannel == null || !currentChannel.isFullySetup) return;
+            int grid = currentChannel.gridNumber, pos = currentChannel.position;
+            bool has = TVTiles.HasSound(grid, pos);
+            var choices = new System.Collections.Generic.List<string> { has ? "Sound is on" : "No sound" };
+            string removeText = "Remove the sound", serverText = "Add a sound from the Channel Server page";
+            if (has) choices.Add(removeText);
+            // sound files already on the TV (Download, Music, Movies, Documents folders) can be added right here
+            var files = new System.Collections.Generic.Dictionary<string, string>();
+            foreach (var dir in new[] { "Download", "Music", "Movies", "Documents" })
+            {
+                try
+                {
+                    string root = "/sdcard/" + dir;
+                    if (!System.IO.Directory.Exists(root)) continue;
+                    foreach (var f in System.IO.Directory.GetFiles(root))
+                    {
+                        string ext = System.IO.Path.GetExtension(f).ToLowerInvariant();
+                        if (ext != ".mp3" && ext != ".ogg" && ext != ".wav") continue;
+                        var len = new System.IO.FileInfo(f).Length;
+                        if (len < 1024 || len > 12 * 1024 * 1024 || files.Count >= 10) continue;
+                        string label = "Add: " + System.IO.Path.GetFileName(f);
+                        if (!files.ContainsKey(label)) { files[label] = f; choices.Add(label); }
+                    }
+                }
+                catch (System.Exception) { }
+            }
+            choices.Add(serverText);
+            Option<string> sound = Option.Create("settings.target.previewsound", () => choices[0], x =>
+            {
+                if (has && x == removeText)
+                {
+                    TVTiles.SetSound(grid, pos, null, null);
+                    PopupController.ShowPopup("settings.target.soundremoved");
+                }
+                else if (x == serverText) TVChannelServer.ShowFromSettings();
+                else if (files.TryGetValue(x, out var path))
+                {
+                    string err = null;
+                    try { err = TVTiles.SetSound(grid, pos, System.IO.File.ReadAllBytes(path), path); }
+                    catch (System.Exception) { err = "That file couldn't be read"; }
+                    if (err == null) PopupController.ShowPopup("settings.target.soundadded", PopupController.ClosePopup, true, new[] { System.IO.Path.GetFileName(path) });
+                    else PopupController.ShowPopup("settings.target.soundfail", PopupController.ClosePopup, true, new[] { err });
+                }
+            });
+            OptionsSpawner.SummonOption_DropdownString(sound, _instance.optionsHolder, choices);
         }
         
         private void SpawnAnim(Channel channel, GameObject prefab, CHANNELTYPE type) {

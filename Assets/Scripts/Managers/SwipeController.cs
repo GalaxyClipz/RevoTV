@@ -64,16 +64,16 @@ public class SwipeController : MonoBehaviour
             cancelMultipleTouches = true;
         }
         
-        if (Input.GetMouseButtonDown(0))
+        if (RInput.GetMouseButtonDown(0))
         {
-            fingerDown = Input.mousePosition;
-            fingerUp = Input.mousePosition;
+            fingerDown = RInput.mousePosition;
+            fingerUp = RInput.mousePosition;
             fingerDownTime = DateTime.Now;
         }
 
-        if (Input.GetMouseButtonUp(0))
+        if (RInput.GetMouseButtonUp(0))
         {
-            fingerDown = Input.mousePosition;
+            fingerDown = RInput.mousePosition;
             fingerUpTime = DateTime.Now;
             CheckSwipe();
         }

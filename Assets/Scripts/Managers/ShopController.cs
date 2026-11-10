@@ -1222,6 +1222,16 @@ public class ShopController : MonoBehaviour
                 {
                     await _instance.SendRequest(WebRequestController.SendIncreaseDownloadAnon(ContentType.THEMES, animationId));
                 }
+                if (TVMode.IsTV && !TVGlass.On)
+                {
+                    string themeFile = $"theme_{animationId}.zip";
+                    PopupController.ShowPopup("tv.theme.downloaded", () =>
+                    {
+                        ClickedBack();
+                        TVThemes.Offer(ThemeController._instance.GetOrLoadTheme(themeFile), true);
+                    }, () => { PopupController.ClosePopup(); ClickedBack(); });
+                }
+                else
                 PopupController.ShowPopup("popup.downloadedtheme", ClickedBack);
             }
             return true;

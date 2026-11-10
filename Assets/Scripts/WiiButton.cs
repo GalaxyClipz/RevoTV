@@ -38,13 +38,54 @@ public class WiiButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return originalScale;
     }
 
+    // only one button is hovered at a time: a button whose pointer-exit was missed (the TV's pointer jumps between
+    // tiles, pages change under it) would otherwise keep its outline / size and show as a second highlight
+    private static readonly List<WiiButton> hot = new List<WiiButton>();
+
+    /// <summary>The remote moved the light to <paramref name="focus"/>: any button still hovered elsewhere lets go.</summary>
+    public static void ReleaseOthers(Transform focus)
+    {
+        for (int i = hot.Count - 1; i >= 0; i--)
+        {
+            var h = hot[i];
+            if (h == null) { hot.RemoveAt(i); continue; }
+            if (focus != null && (focus.IsChildOf(h.transform) || h.transform.IsChildOf(focus))) continue;
+            hot.RemoveAt(i);
+            h.GetSmaller();
+        }
+    }
+
+    private void OnDisable()
+    {
+        hot.Remove(this);
+        if (isOutline)
+        {
+            isOutline = false;
+            outlineTween?.Kill();
+            if (outline != null) outline.effectDistance = outlineSource;
+        }
+        if (isBigger)
+        {
+            isBigger = false;
+            scaleTween?.Kill();
+            scaleTween = null;
+        }
+    }
+
     public void OnPointerEnter(PointerEventData eventData)
     {
+        for (int i = hot.Count - 1; i >= 0; i--)
+        {
+            var h = hot[i];
+            if (h == null) { hot.RemoveAt(i); continue; }
+            if (h != this) { h.GetSmaller(); hot.RemoveAt(i); }
+        }
+        if (!hot.Contains(this)) hot.Add(this);
         if (shouldPlayHover)
         {
-            AudioController.PlaySoundEffect(AudioLibrary._instance.HOVER_BUTTON);
+            if (!TVMode.IsTV || TVNav.UserActive) AudioController.PlaySoundEffect(AudioLibrary._instance.HOVER_BUTTON);
         }
-        if (shouldGetBigger && !isBigger)
+        if (shouldGetBigger && !isBigger && !TVMode.IsTV) // on TV the glow marks the focus; growing buttons overlap their neighbours
         {
             isBigger = true;
             Vector3 localScale = CompleteAndSetScale();
@@ -56,7 +97,7 @@ public class WiiButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     .AppendCallback(() => scaleTween = null);
             }
         }
-        if (shouldOutline && !isOutline)
+        if (shouldOutline && !isOutline && !TVMode.IsTV) // on TV the remote's light marks the focus: a hover outline would be a second highlight
         {
             isOutline = true;
             outlineTween?.Complete();
@@ -73,6 +114,7 @@ public class WiiButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void OnPointerExit(PointerEventData eventData)
     {
+        hot.Remove(this);
         GetSmaller();
     }
 

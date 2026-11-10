@@ -29,13 +29,16 @@ namespace SettingsViews
                 // no apps to be retrieved in iOS - we disable this button since it could still show up in default channels
                 button.gameObject.SetActive(false);
                 #else
+                // built in: its app can't be swapped (the button stays so the remote can still reach the options below it)
+                if (TVMode.IsTV && TVTiles.IsLocked(channel.info.packageName)) button.GetComponent<Button>().onClick.AddListener(() => PopupController.ShowPopup("tv.channel.builtin", PopupController.ClosePopup));
+                else
                 button.GetComponent<Button>().onClick.AddListener(() => _instance.setupAppSettingView.Show(channel));
                 #endif
             }
-            
+
             // we spawn the activity selector
-            #if !UNITY_IOS            
-            if (channel.target is ChannelAppTarget target && channel.info != null)
+            #if !UNITY_IOS
+            if (channel.target is ChannelAppTarget target && channel.info != null && !(TVMode.IsTV && TVTiles.IsLocked(channel.info.packageName)))
             {
                 if (!Application.isMobilePlatform)
                 {

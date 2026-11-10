@@ -638,7 +638,7 @@ public class SaveManager : MonoBehaviour
                 string extractedPath = TEMP_DESERIALIZE + Path.GetFileNameWithoutExtension(zipPath);
                 RecreateFolder(extractedPath);
 
-                UnzipFile(zipPath, extractedPath);
+                UnzipThemeFile(zipPath, extractedPath);
             
                 Theme theme = JsonConvert.DeserializeObject<Theme>(File.ReadAllText(extractedPath + "/theme.json"), settings);
                 theme.deserializedPath = extractedPath;
@@ -726,6 +726,32 @@ public class SaveManager : MonoBehaviour
             Debug.Log(e);
         }
         return null;
+    }
+
+    // A TV that couldn't keep up with a theme's video wallpaper shows a still picture for it (TVVideoWall): then the big video
+    // file isn't even taken out of the zip, so that theme opens in a moment instead of several seconds.
+    private static void UnzipThemeFile(string zipPath, string extractedPath)
+    {
+        if (!TVMode.IsTV || TVVideoWall.Allowed(Path.GetFileName(zipPath))) { UnzipFile(zipPath, extractedPath); return; }
+        try
+        {
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+                    string ext = Path.GetExtension(entry.Name).ToLowerInvariant();
+                    if (ext == ".mp4" || ext == ".webm" || ext == ".mov" || ext == ".mkv" || ext == ".avi" || ext == ".m4v") continue;
+                    UnzipEntry(entry, extractedPath);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.Log("Theme unzip fell back: " + e.Message);
+            RecreateFolder(extractedPath);
+            UnzipFile(zipPath, extractedPath);
+        }
     }
 
     public static void UnzipFile(string zipPath, string extractedPath)

@@ -32,12 +32,18 @@ public class InputController : MonoBehaviour
 
     public void RefreshPointerVisibility()
     {
-        mainCursor.gameObject.SetActive(!Application.isMobilePlatform || PREFS.ShowCursor.GetBool());
+        mainCursor.gameObject.SetActive(!TVMode.IsTV && (!Application.isMobilePlatform || PREFS.ShowCursor.GetBool()));
     }
 
     private void Update()
     {
-        mainCursor.position = CameraController._instanceOverlay.GetWorldPosition(Input.mousePosition);
+        mainCursor.position = CameraController._instanceOverlay.GetWorldPosition(RInput.mousePosition);
+        if (TVMode.IsTV)
+        {
+            // remote users get a glowing focus instead of a hand; the hand only shows for a real mouse / free pointer
+            bool want = false; // never show the hand on a TV
+            if (mainCursor.gameObject.activeSelf != want) mainCursor.gameObject.SetActive(want);
+        }
     }
 
     public static Color GetCursorColor(int index)

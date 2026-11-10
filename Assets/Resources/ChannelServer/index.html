@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Revo Channel Server</title>
+<style>
+  .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px; text-align: center; color: var(--muted); cursor: pointer; transition: background .15s, border-color .15s; }
+  .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--ink); }
+  .drop b { color: var(--ink); }
+  .prog { height: 10px; border-radius: 99px; background: var(--tile); overflow: hidden; margin: 10px 0 4px; }
+  .prog > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .games { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  .game { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--tile); }
+  .disc { flex: none; width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 12px;
+          background: radial-gradient(circle, #fff 0 5px, transparent 6px), var(--dc, #737985); }
+  .disc.gc { --dc: #6b54bf; } .disc.wii { --dc: #1a9ee0; }
+  .game .gt { flex: 1; min-width: 0; } .game .gt b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game .gt span { font-size: 13px; color: var(--muted); }
+  .game button { flex: none; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .sw { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--panel); box-shadow: 0 0 0 1px var(--line); cursor: pointer; padding: 0; }
+  .sw.on { box-shadow: 0 0 0 3px var(--accent); }
+  .sw.auto { background: conic-gradient(#47c2ff, #4cff7a, #ffe53c, #ff9a3c, #ff6fd2, #a77cff, #47c2ff); }
+  .glowprev { height: 64px; border-radius: 14px; margin: 8px 0; display: flex; align-items: center; justify-content: center; background: #1b2433; }
+  .glowprev span { width: 120px; height: 34px; border-radius: 10px; background: #dfe6ee; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .btn.big { width: 100%; padding: 14px; font-size: 17px; margin: 6px 0; }
+  details.more { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+  details.more summary { cursor: pointer; padding: 10px 0; color: var(--accent); font-weight: 600; }
+  h3.sub { font-size: 15px; margin: 18px 0 6px; }
+  .lbl { display: block; font-size: 13px; color: var(--muted); margin: 6px 0 4px; }
+  .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 12px; }
+  .cpick { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); text-align: center; }
+  .cpick input[type=color], .swpick { -webkit-appearance: none; appearance: none; width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--panel); box-shadow: 0 0 0 1px var(--line); padding: 0; background: none; cursor: pointer; }
+  .cpick input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .cpick input[type=color]::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .cpick input[type=color]::-moz-color-swatch { border: none; border-radius: 50%; }
+  .cpick.on input[type=color] { box-shadow: 0 0 0 3px var(--accent); }
+  .cpick .reset { border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; padding: 0; }
+  .mpreview { aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 10px; }
+  .steps { display: flex; gap: 5px; margin: 0 0 12px; }
+  .steps i { flex: 1; height: 5px; border-radius: 9px; background: var(--line); }
+  .steps i.on { background: var(--accent); }
+  .choices { display: grid; gap: 8px; margin: 10px 0; }
+  .choice { text-align: left; border: 2px solid var(--line); background: var(--tile); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; cursor: pointer; }
+  .choice.on { border-color: var(--accent); }
+  .choice small { display: block; color: var(--muted); }
+  .snd { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .snd .t { flex: 1; min-width: 0; font-size: 14px; } .snd .t b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .snd .t span { font-size: 12px; color: var(--muted); }
+  .snd button { flex: none; }
+  .barcols label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); flex: 1 1 110px; }
+  .barcols input[type=color] { width: 100%; height: 42px; border: 0; background: none; padding: 0; }
+  .busy { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 30; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .busy.on { display: flex; }
+  .busy .box { background: var(--panel); color: var(--ink); border-radius: 16px; padding: 20px; max-width: 420px; width: 100%; box-shadow: var(--shadow); }
+  .busy .box h3 { margin: 0 0 6px; font-size: 18px; }
+  :root {
+    --bg: #eef2f7; --panel: #ffffff; --ink: #1d2733; --muted: #6b7785; --line: #d5dde7;
+    --accent: #12a8e0; --accent-ink: #ffffff; --danger: #d6455a; --tile: #f7f9fc; --shadow: 0 2px 10px rgba(20, 40, 70, .10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f151c; --panel: #18212b; --ink: #e8eef5; --muted: #93a1b0; --line: #2a3644; --tile: #1e2935; --shadow: 0 2px 10px rgba(0,0,0,.4); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); box-shadow: var(--shadow); padding: 12px 16px 8px; }
+  h1 { margin: 0 0 8px; font-size: 20px; font-weight: 700; letter-spacing: .2px; }
+  h1 small { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 6px; }
+  .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .tab { flex: none; border: 1px solid var(--line); background: var(--tile); color: var(--ink); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; }
+  .tab.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  main { padding: 16px; max-width: 980px; margin: 0 auto; }
+  .hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .grid { display: grid; gap: 10px; }
+  .slot { position: relative; aspect-ratio: 4 / 3; border-radius: 14px; border: 1px solid var(--line); background: var(--tile); overflow: hidden;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; padding: 0; font: inherit; color: inherit; }
+  .slot img { width: 100%; height: 100%; object-fit: contain; padding: 10%; pointer-events: none; }
+  .slot img.cover { object-fit: cover; padding: 0; }
+  .slot .name { position: absolute; left: 0; right: 0; bottom: 0; font-size: 12px; padding: 4px 6px; background: linear-gradient(transparent, rgba(0,0,0,.55)); color: #fff;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .slot .glyph { font-size: 44px; line-height: 1; margin-bottom: 14px; pointer-events: none; }
+  .slot.builtin { background: linear-gradient(160deg, var(--b1, #eef3f8), var(--b2, #cfdbe7)); }
+  @media (prefers-color-scheme: dark) { .slot.builtin { background: linear-gradient(160deg, var(--d1, #2a3644), var(--d2, #18212b)); } }
+  .slot.empty { border-style: dashed; color: var(--muted); font-size: 28px; }
+  .slot.moving { outline: 3px solid var(--accent); outline-offset: 2px; opacity: .6; }
+  .slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .bar { position: sticky; bottom: 0; background: var(--accent); color: var(--accent-ink); padding: 12px 16px; display: none; align-items: center; gap: 12px; justify-content: space-between; }
+  .bar.on { display: flex; }
+  button.btn { border: 0; border-radius: 10px; padding: 10px 14px; font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button.btn.soft { background: var(--tile); color: var(--ink); border: 1px solid var(--line); }
+  button.btn.danger { background: var(--danger); color: #fff; }
+  button.btn.light { background: #fff; color: #0b5d80; }
+  .sheet-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; z-index: 10; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 85vh; overflow: auto; background: var(--panel); border-radius: 18px 18px 0 0; padding: 16px 16px 24px; z-index: 11;
+           transform: translateY(105%); transition: transform .18s ease-out; max-width: 680px; margin: 0 auto; }
+  .sheet.on { transform: none; }
+  .sheet h2 { margin: 0 0 12px; font-size: 18px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .row > * { flex: 1 1 140px; }
+  input[type=text], input[type=search] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--tile); color: var(--ink); font: inherit; }
+  label.check { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); margin: 6px 0; }
+  .apps { list-style: none; margin: 8px 0 0; padding: 0; }
+  .apps li button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; border-radius: 10px; cursor: pointer; }
+  .apps li button:hover, .apps li button:focus-visible { background: var(--tile); }
+  .apps img { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; flex: none; }
+  .toast { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; z-index: 20;
+           font-size: 14px; display: none; max-width: calc(100% - 32px); }
+  .toast.err { background: var(--danger); color: #fff; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .sections { display: flex; gap: 6px; padding-bottom: 6px; }
+  .sec { flex: 1; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 6px 4px; cursor: pointer; }
+  .sec.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 0 0 12px; box-shadow: var(--shadow); }
+  .card h2 { margin: 0 0 6px; font-size: 18px; }
+  .hubgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .hubitem { border: 1px solid var(--line); background: var(--tile); border-radius: 12px; overflow: hidden; padding: 0; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+  .hubitem .pic { aspect-ratio: 4 / 3; background: #0001; display: flex; align-items: center; justify-content: center; }
+  .hubitem .pic img { width: 100%; height: 100%; object-fit: contain; }
+  .hubitem .txt { padding: 6px 8px 8px; font-size: 13px; }
+  .hubitem .txt b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+  select { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--tile); color: var(--ink); font: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Revo Channel Server <small id="status">connecting…</small></h1>
+  <div class="sections" id="sections" role="tablist" aria-label="Sections">
+    <button class="sec on" data-v="channels">Channels</button>
+    <button class="sec" data-v="theme">Theme</button>
+    <button class="sec" data-v="music">Home music</button>
+    <button class="sec" data-v="games">Games</button>
+  </div>
+  <div class="tabs" id="tabs" role="tablist" aria-label="Pages"></div>
+</header>
+<main>
+  <section id="vChannels">
+    <p class="hint" id="hint">Tap an empty slot to add an app, or a channel to change it.</p>
+    <div class="grid" id="grid"></div>
+  </section>
+  <section id="vTheme" hidden>
+    <div class="card">
+      <h2>Theme</h2>
+      <p class="muted">Pick a colour theme from the Revo Content Hub. It is downloaded by the TV and switched on right away. (The new glass look keeps its own style; themes show in the classic menu.)</p>
+      <div class="row"><button class="btn" id="browseThemes">Browse themes</button></div>
+    </div>
+    <div class="card">
+      <h2>Make your own theme</h2>
+      <p class="muted">Your own wallpaper, colours and sounds. Everything you don't change stays as it is. The TV restarts once to put it on (classic menu only).</p>
+      <div id="makerWarn" class="hint" hidden>Glass 2026 is on: turn it off on the TV (Settings) to use custom themes.</div>
+      <button class="btn big" id="easyStart">&#10024; Easy setup, step by step</button>
+      <details class="more" id="makerMore">
+        <summary>All options on one page</summary>
+        <label class="lbl" for="makerName">Name</label>
+        <input type="text" id="makerName" placeholder="For example: Bubby's Blue" maxlength="40">
+        <h3 class="sub">Pictures and sounds</h3>
+        <div id="makerParts"></div>
+        <h3 class="sub">Colours</h3>
+        <p class="muted">Tap a circle to pick a colour. Only the ones you change are used.</p>
+        <div class="cgrid">
+          <div class="cpick"><input type="color" id="makerColor" value="#12a8e0"><span>Highlight</span><button class="reset" data-for="makerColor" hidden>undo</button></div>
+          <div class="cpick"><input type="color" id="makerBar" value="#e8ebef"><span>Bottom bar</span><button class="reset" data-for="makerBar" hidden>undo</button></div>
+          <div class="cpick"><input type="color" id="makerLine" value="#20a6e0"><span>Bar line</span><button class="reset" data-for="makerLine" hidden>undo</button></div>
+          <div class="cpick"><input type="color" id="makerText" value="#8b8f96"><span>Time and date</span><button class="reset" data-for="makerText" hidden>undo</button></div>
+          <div class="cpick"><input type="color" id="makerBtn" value="#f2f3f5"><span>Round buttons</span><button class="reset" data-for="makerBtn" hidden>undo</button></div>
+        </div>
+        <h3 class="sub">Empty slots</h3>
+        <label class="lbl" for="makerEmpty"><span id="makerEmptyVal">100%</span> visible</label>
+        <input type="range" id="makerEmpty" min="10" max="100" step="5" value="100">
+        <h3 class="sub">Start from</h3>
+        <select id="makerFrom"><option value="current">The theme on the TV now</option><option value="default">Revo's clean white look</option></select>
+        <h3 class="sub">Preview</h3>
+        <div id="makerPreview" class="mpreview"></div>
+        <button class="btn big" id="makerSave">Save and use it</button>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Hover light &amp; empty slots</h2>
+      <p class="muted">The light around whatever the remote is on. <b>Normal</b> = Wii blue, or your custom theme's own hover colour. Changes show on the TV right away.</p>
+      <div class="glowprev"><span id="glowSample"></span></div>
+      <div class="swatches" id="glowSwatches"></div>
+      <div class="row" style="align-items:center">
+        <label style="flex:1 1 180px">Any colour you like</label>
+        <input type="color" id="glowPick" value="#47c2ff" style="flex:0 0 64px;height:42px;border:0;background:none">
+      </div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+      <label for="emptyRange"><b>Empty slot see-through</b>: <span id="emptyVal">100%</span> visible</label>
+      <p class="muted" id="emptyNote">For custom themes: how solid the empty channel slots look (100% = normal). Saved into the theme in use, so it goes along if you post it.</p>
+      <input type="range" id="emptyRange" min="10" max="100" step="5" value="100">
+    </div>
+    <div class="card">
+      <h2>Post to the Content Hub</h2>
+      <p class="muted">Shares one of your themes, or the pictures and previews you made for a channel, under the account the TV is signed in to. Your phone doesn't need to sign in. It's marked <b>[TV]</b> so other TV owners can find it. Tip: switch to the theme on the TV first, so the TV can take a picture of it for the preview.</p>
+      <p id="postWho" class="hint">Checking the TV's sign-in…</p>
+      <div class="row"><select id="postTheme"></select></div>
+      <div class="row"><input type="text" id="postName" placeholder="Name on the hub" maxlength="40"></div>
+      <div class="row"><input type="text" id="postDesc" placeholder="Short description (what it looks like)" maxlength="300"></div>
+      <div class="row"><button class="btn" id="postBtn">Post it</button></div>
+    </div>
+  </section>
+  <section id="vGames" hidden>
+    <div class="card">
+      <h2>Disc games</h2>
+      <p class="muted">Drop GameCube or Wii disc images here and they're copied to the TV's <b>Games</b> folder. They show up in the Disc Channel right away, with their real names read from the disc. Big files are fine: keep this page open until it says done.</p>
+      <label class="drop" id="gameDrop" tabindex="0">
+        <input type="file" id="gameFile" multiple hidden>
+        <div style="font-size:34px;line-height:1">💿</div>
+        <div><b>Drop games here</b> or tap to choose</div>
+        <div class="muted" id="gameTypes"></div>
+      </label>
+      <div id="gameUp" hidden>
+        <div class="prog"><div id="gameBar"></div></div>
+        <div class="muted" id="gameUpText"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>On the TV</h2>
+      <p class="muted" id="gameWhere">Looking…</p>
+      <ul class="games" id="gameList"></ul>
+    </div>
+  </section>
+  <section id="vMusic" hidden>
+    <div class="card">
+      <h2>Home music</h2>
+      <p class="muted">A song for the Home menu and Settings only. Channel previews and the Content Hub shop keep their own music. MP3, OGG or WAV, up to 24 MB.</p>
+      <p id="musicNow" class="hint">Checking…</p>
+      <div class="row"><button class="btn" id="musicFind">Find a song online</button><button class="btn soft" id="musicPick">Choose a file</button></div>
+      <div class="row"><button class="btn soft" id="musicClear">Back to Revo's music</button></div>
+    </div>
+  </section>
+</main>
+<div class="bar" id="moveBar"><span id="moveText">Tap where it should go</span><button class="btn light" id="moveCancel">Cancel</button></div>
+<div class="sheet-back" id="back"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="toast" id="toast" role="status"></div>
+<div class="busy" id="busy" role="alertdialog" aria-live="polite"><div class="box"><h3 id="busyTitle"></h3><p class="muted" id="busyText" style="font-size:14px"></p>
+  <div class="prog" id="busyProg" hidden><div id="busyBar"></div></div></div></div>
+<input type="file" id="file" accept="image/png,image/jpeg,image/gif" hidden>
+<input type="file" id="audioFile" accept="audio/*,.mp3,.ogg,.wav" hidden>
+
+<script>
+(() => {
+  const K = new URLSearchParams(location.search).get('k') || '';
+  const $ = id => document.getElementById(id);
+  let state = null, page = 0, moving = null, apps = null, stamp = Date.now();
+
+  const api = (path, params = {}) => {
+    const q = new URLSearchParams({ ...params, k: K });
+    return `${path}?${q}`;
+  };
+  async function getJson(path, params) {
+    const r = await fetch(api(path, params));
+    if (!r.ok) throw new Error('The TV answered ' + r.status);
+    return r.json();
+  }
+  async function post(path, params, body) {
+    const r = await fetch(api(path, params), { method: 'POST', body: body ?? '' });
+    if (!r.ok) throw new Error('The TV answered ' + r.status);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'That didn\'t work');
+    return j;
+  }
+  // a step that takes a while (a download on the TV, a restart): one clear box with what is happening now
+  function busy(title, text, p) {
+    $('busy').className = title ? 'busy on' : 'busy';
+    if (!title) return;
+    $('busyTitle').textContent = title; $('busyText').textContent = text || '';
+    $('busyProg').hidden = p == null; if (p != null) $('busyBar').style.width = Math.round(p * 100) + '%';
+  }
+  // the TV restarts to put a theme on: wait for it to come back (its Channel Server opens again by itself), then carry on
+  async function waitForTv(what) {
+    busy('The TV is restarting', what + '. The TV restarts to put it on. Press A on the TV\'s start-up screen; this page reconnects by itself.');
+    await new Promise(r => setTimeout(r, 6000));
+    for (let i = 0; i < 150; i++) {
+      try { const r = await fetch(api('/api/state'), { cache: 'no-store' }); if (r.ok) { busy(); toast('The TV is back with your theme'); load(); if (typeof loadMaker === 'function') loadMaker(); return; } } catch (e) { }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    busy('Still waiting for the TV', 'If the TV is on its menu, open Settings > Channel Server on it again, then reload this page.');
+  }
+  function toast(msg, err) {
+    const t = $('toast');
+    t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.style.display = 'block';
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => t.style.display = 'none', err ? 5000 : 2200);
+  }
+  const BUILTIN = {
+    disc:    { glyph: '\u{1F4BF}', vars: { '--b1': '#ffffff', '--b2': '#d9dee5', '--d1': '#3a414b', '--d2': '#22272e' } },
+    gallery: { glyph: '\u{1F5BC}️', vars: { '--b1': '#f6e2c4', '--b2': '#d9b383', '--d1': '#5a4630', '--d2': '#33271a' } },
+    market:  { glyph: '\u{1F6CD}️', vars: { '--b1': '#e3f3ff', '--b2': '#a9d6f5', '--d1': '#1d4a6b', '--d2': '#122c40' } },
+    youtube: { glyph: '▶️', vars: { '--b1': '#ffffff', '--b2': '#f3d0d0', '--d1': '#5c1f1f', '--d2': '#2e1010' } },
+    rii:     { glyph: '\u{1F642}', vars: { '--b1': '#f4f0ea', '--b2': '#dcd0c0', '--d1': '#4a4038', '--d2': '#2a241f' } },
+    contacts:{ glyph: '\u{1F642}', vars: { '--b1': '#f4f0ea', '--b2': '#dcd0c0', '--d1': '#4a4038', '--d2': '#2a241f' } },
+    weather: { glyph: '\u{26C5}', vars: { '--b1': '#e3f3ff', '--b2': '#7fb8ee', '--d1': '#2f6fb5', '--d2': '#1b3f6b' } },
+    other:   { glyph: '⭐', vars: {} },
+  };
+  const tileAt = (p, pos) => state.tiles.find(t => t.page === p && t.pos === pos);
+
+  async function load() {
+    try {
+      state = await getJson('/api/state');
+      $('status').textContent = state.busy ? 'TV is busy' : 'connected';
+      if (page >= state.pages) page = 0;
+      render();
+    } catch (e) {
+      $('status').textContent = 'not connected';
+      toast('Can\'t reach the TV. Is Channel Server still on?', true);
+    }
+  }
+
+  function render() {
+    const tabs = $('tabs'); tabs.innerHTML = '';
+    for (let i = 0; i < state.pages; i++) {
+      const b = document.createElement('button');
+      b.className = 'tab' + (i === page ? ' on' : ''); b.textContent = 'Page ' + (i + 1);
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', i === page);
+      b.onclick = () => { page = i; render(); };
+      tabs.appendChild(b);
+    }
+    const grid = $('grid'); grid.innerHTML = '';
+    const cols = Math.max(1, state.cols || 4);
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`; // same columns as the TV, so slots sit where they do on screen
+    for (let pos = 0; pos < state.slots; pos++) {
+      const t = tileAt(page, pos);
+      const b = document.createElement('button');
+      b.className = 'slot' + (t ? '' : ' empty');
+      if (moving && moving.page === page && moving.pos === pos) b.classList.add('moving');
+      const look = t && !t.custom && (t.pkg || '').startsWith('revo.') ? BUILTIN[t.pkg.slice(5)] || BUILTIN.other : null;
+      if (look) {
+        // Revo\'s own channels are animations, not app icons: a card in the channel\'s colours instead of a picture
+        b.classList.add('builtin');
+        for (const [k, v] of Object.entries(look.vars)) b.style.setProperty(k, v);
+        const g = document.createElement('span'); g.className = 'glyph'; g.textContent = look.glyph; g.setAttribute('aria-hidden', 'true');
+        const n = document.createElement('span'); n.className = 'name'; n.textContent = t.name || 'Channel';
+        b.append(g, n);
+        b.setAttribute('aria-label', (t.name || 'Channel') + ', slot ' + (pos + 1));
+      } else if (t) {
+        const img = document.createElement('img');
+        img.alt = ''; img.loading = 'lazy';
+        if (t.custom) img.className = 'cover';
+        img.src = api('/api/thumb', { page, pos, t: stamp });
+        img.onerror = () => img.remove();
+        const n = document.createElement('span'); n.className = 'name'; n.textContent = t.name || t.pkg || 'Channel';
+        b.append(img, n);
+        b.setAttribute('aria-label', (t.name || 'Channel') + ', slot ' + (pos + 1));
+      } else {
+        b.textContent = '+';
+        b.setAttribute('aria-label', 'Empty slot ' + (pos + 1));
+      }
+      b.onclick = () => clicked(pos);
+      grid.appendChild(b);
+    }
+    $('moveBar').classList.toggle('on', !!moving);
+    $('hint').textContent = moving ? 'Pick a slot on any page. A slot with a channel swaps places.' : 'Tap an empty slot to add an app, or a channel to change it.';
+  }
+
+  async function clicked(pos) {
+    if (moving) {
+      const from = moving; moving = null;
+      try {
+        await post('/api/move', { page: from.page, pos: from.pos, toPage: page, toPos: pos });
+        toast('Moved'); stamp = Date.now();
+      } catch (e) { toast(e.message, true); }
+      return load();
+    }
+    const t = tileAt(page, pos);
+    t ? openTile(t) : openAdd(pos);
+  }
+
+  // ------------------------------------------------------------ sheets
+  function openSheet(build) {
+    const s = $('sheet'); s.innerHTML = ''; build(s);
+    $('back').style.display = 'block'; requestAnimationFrame(() => s.classList.add('on'));
+    const first = s.querySelector('input,button'); if (first) setTimeout(() => first.focus(), 200);
+  }
+  function closeSheet() { $('sheet').classList.remove('on'); $('back').style.display = 'none'; }
+  $('back').onclick = closeSheet;
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet(); if (moving) { moving = null; render(); } } });
+  $('moveCancel').onclick = () => { moving = null; render(); };
+
+  function el(tag, props = {}, ...kids) { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; }
+
+  async function openAdd(pos) {
+    openSheet(s => {
+      s.append(el('h2', { textContent: `Add an app to page ${page + 1}, slot ${pos + 1}` }));
+      const search = el('input', { type: 'search', placeholder: 'Search your apps', 'aria-label': 'Search apps' });
+      const list = el('ul', { className: 'apps' }, el('li', { className: 'muted', textContent: 'Loading apps…' }));
+      s.append(search, list);
+      const draw = () => {
+        list.innerHTML = '';
+        const q = search.value.trim().toLowerCase();
+        (apps || []).filter(a => !q || a.name.toLowerCase().includes(q) || a.pkg.includes(q)).forEach(a => {
+          const img = el('img', { alt: '', loading: 'lazy', src: api('/api/appicon', { pkg: a.pkg }) });
+          img.onerror = () => img.style.visibility = 'hidden';
+          const b = el('button', {}, img, el('span', { textContent: a.name }));
+          b.onclick = async () => {
+            try { await post('/api/add', { page, pos, pkg: a.pkg }); toast(a.name + ' added'); closeSheet(); stamp = Date.now(); load(); }
+            catch (e) { toast(e.message, true); }
+          };
+          list.append(el('li', {}, b));
+        });
+        if (!list.children.length) list.append(el('li', { className: 'muted', textContent: 'No apps match.' }));
+      };
+      search.oninput = draw;
+      (apps ? Promise.resolve(apps) : getJson('/api/apps').then(a => apps = a.sort((x, y) => x.name.localeCompare(y.name))))
+        .then(draw).catch(e => toast(e.message, true));
+    });
+  }
+
+  function openTile(t) {
+    openSheet(s => {
+      s.append(el('h2', { textContent: t.name || 'Channel' }));
+      const name = el('input', { type: 'text', value: t.name || '', maxLength: 48, 'aria-label': 'Name' });
+      const save = el('button', { className: 'btn soft', textContent: 'Rename' });
+      save.onclick = async () => { try { await post('/api/rename', { page: t.page, pos: t.pos }, name.value); toast('Renamed'); closeSheet(); load(); } catch (e) { toast(e.message, true); } };
+      s.append(el('div', { className: 'row' }, name, save));
+
+      const fill = el('input', { type: 'checkbox', checked: true });
+      s.append(el('label', { className: 'check' }, fill, el('span', { textContent: 'Fill the whole area (edges may be cropped). Off: show the whole picture.' })));
+      const pic = (type) => {
+        const f = $('file'); f.value = '';
+        f.onchange = async () => {
+          const file = f.files[0]; if (!file) return;
+          if (file.size > 12 * 1024 * 1024) return toast('That file is over 12 MB', true);
+          const gif = file.type === 'image/gif' || /\.gif$/i.test(file.name);
+          toast('Sending to the TV…');
+          try {
+            await post('/api/picture', { page: t.page, pos: t.pos, type, gif: gif ? 1 : 0, fill: fill.checked ? 1 : 0 }, file);
+            toast(type === 'icon' ? 'Tile picture changed' : 'Preview picture changed'); closeSheet(); stamp = Date.now(); load();
+          } catch (e) { toast(e.message, true); }
+        };
+        f.click();
+      };
+      const tilePic = el('button', { className: 'btn', textContent: 'Tile picture / GIF' }); tilePic.onclick = () => pic('icon');
+      const prevPic = el('button', { className: 'btn', textContent: 'Preview picture / GIF' }); prevPic.onclick = () => pic('banner');
+      s.append(el('div', { className: 'row' }, tilePic, prevPic));
+
+      // Content Hub pictures for this channel
+      const hubTile = el('button', { className: 'btn soft', textContent: 'Tile picture from Content Hub' }); hubTile.onclick = () => openHub('animations', { t, kind: 'icon' });
+      const hubPrev = el('button', { className: 'btn soft', textContent: 'Preview picture from Content Hub' }); hubPrev.onclick = () => openHub('animations', { t, kind: 'banner' });
+      s.append(el('div', { className: 'row' }, hubTile, hubPrev));
+
+      // the sound the preview plays when the channel opens
+      const soundInfo = el('p', { className: 'muted', textContent: 'Preview sound: checking…' });
+      const pickSound = el('button', { className: 'btn soft', textContent: 'Choose a file' });
+      const findSound = el('button', { className: 'btn', textContent: 'Find a sound online' }); findSound.onclick = () => openSoundSearch('tile', t);
+      const dropSound = el('button', { className: 'btn soft', textContent: 'Remove sound' });
+      s.append(soundInfo, el('div', { className: 'row' }, findSound, pickSound, dropSound));
+      getJson('/api/tileinfo', { page: t.page, pos: t.pos }).then(i => {
+        soundInfo.textContent = i.sound ? 'This preview plays its own sound. Listen before replacing it:' : 'This preview has no sound right now.';
+        if (i.sound) { const au = el('audio', { controls: true, preload: 'none', src: api('/api/tilesound', { page: t.page, pos: t.pos, t: Date.now() }) }); au.style.width = '100%'; soundInfo.after(au); pickSound.textContent = 'Replace the sound'; }
+      }).catch(() => { soundInfo.textContent = ''; });
+      pickSound.onclick = () => {
+        const f = $('audioFile'); f.value = '';
+        f.onchange = async () => {
+          const file = f.files[0]; if (!file) return;
+          if (file.size > 24 * 1024 * 1024) return toast('That file is over 24 MB', true);
+          toast('Sending the sound to the TV…');
+          try { await post('/api/sound', { page: t.page, pos: t.pos, file: file.name }, file); toast('Preview sound set'); closeSheet(); load(); }
+          catch (e) { toast(e.message, true); }
+        };
+        f.click();
+      };
+      dropSound.onclick = async () => {
+        try { await post('/api/sound', { page: t.page, pos: t.pos, clear: 1 }); toast('Preview sound removed'); closeSheet(); load(); } catch (e) { toast(e.message, true); }
+      };
+
+      const move = el('button', { className: 'btn soft', textContent: 'Move' });
+      move.onclick = () => { moving = { page: t.page, pos: t.pos }; closeSheet(); render(); $('moveText').textContent = `Tap where "${t.name || 'Channel'}" should go`; };
+      const remove = el('button', { className: 'btn danger', textContent: 'Remove' });
+      remove.onclick = async () => {
+        if (!confirm(`Remove "${t.name || 'this channel'}" from the TV?`)) return;
+        try { await post('/api/remove', { page: t.page, pos: t.pos }); toast('Removed'); closeSheet(); load(); } catch (e) { toast(e.message, true); }
+      };
+      s.append(el('div', { className: 'row' }, move, remove));
+      s.append(el('p', { className: 'muted', textContent: 'Pictures: PNG, JPG or GIF, up to 12 MB. Long or large GIFs are turned away so the TV doesn\'t run out of memory.' }));
+    });
+  }
+
+  // ------------------------------------------------------------ Content Hub (the TV\'s own hub, shown only while editing a channel or the theme)
+  function openHub(type, ctx) {
+    openSheet(s => {
+      const themes = type === 'themes';
+      s.append(el('h2', { textContent: themes ? 'Content Hub: themes' : ctx.kind === 'icon' ? 'Content Hub: tile pictures' : 'Content Hub: preview pictures' }));
+      const q = el('input', { type: 'search', placeholder: 'Search…', 'aria-label': 'Search' });
+      const sort = el('select', { 'aria-label': 'Sort' }, ...['popular', 'newest', 'oldest'].map(v => el('option', { value: v, textContent: v[0].toUpperCase() + v.slice(1) })));
+      const go = el('button', { className: 'btn', textContent: 'Search' });
+      s.append(el('div', { className: 'row' }, q, sort, go));
+      const list = el('div', { className: 'hubgrid' });
+      const pager = el('div', { className: 'pager' });
+      s.append(list, pager);
+      let pg = 1;
+      const fetchPage = async () => {
+        list.innerHTML = ''; pager.innerHTML = '';
+        list.append(el('p', { className: 'muted', textContent: 'Asking the Content Hub…' }));
+        try {
+          const r = await getJson('/api/hub/search', { type, q: q.value.trim(), sort: sort.value, hpage: pg });
+          list.innerHTML = '';
+          if (!r.ok) return list.append(el('p', { className: 'muted', textContent: r.error || 'The hub did not answer.' }));
+          if (!r.items.length) list.append(el('p', { className: 'muted', textContent: 'Nothing found.' }));
+          r.items.forEach(it => {
+            const img = el('img', { alt: '', loading: 'lazy', src: api('/api/hub/thumb', { type, id: it.id, which: themes ? 'home' : ctx.kind }) });
+            img.onerror = () => img.remove();
+            const b = el('button', { className: 'hubitem' }, el('div', { className: 'pic' }, img),
+              el('div', { className: 'txt' }, el('b', { textContent: it.name || 'Untitled' }), el('span', { className: 'muted', textContent: (it.author || '') + (it.downloads ? ' · ' + it.downloads + ' downloads' : '') })));
+            b.onclick = () => useHub(type, ctx, it);
+            list.append(b);
+          });
+          const prev = el('button', { className: 'btn soft', textContent: 'Previous', disabled: pg <= 1 });
+          const next = el('button', { className: 'btn soft', textContent: 'Next', disabled: pg >= r.pages });
+          prev.onclick = () => { pg--; fetchPage(); }; next.onclick = () => { pg++; fetchPage(); };
+          pager.append(prev, el('span', { className: 'muted', textContent: pg + ' / ' + r.pages }), next);
+        } catch (e) { list.innerHTML = ''; list.append(el('p', { className: 'muted', textContent: e.message })); }
+      };
+      go.onclick = () => { pg = 1; fetchPage(); };
+      q.onkeydown = e => { if (e.key === 'Enter') go.onclick(); };
+      sort.onchange = () => { pg = 1; fetchPage(); };
+      fetchPage();
+    });
+  }
+
+  async function useHub(type, ctx, it) {
+    const themes = type === 'themes';
+    const what = themes ? `Switch the TV to the theme "${it.name}"? The TV downloads it, then Revo restarts to put it on.` : `Use "${it.name}" as the ${ctx.kind === 'icon' ? 'tile picture' : 'preview picture'} for ${ctx.t.name || 'this channel'}?`;
+    if (!confirm(what)) return;
+    toast('The TV is downloading it…');
+    let poll = null;
+    try {
+      if (themes) {
+        busy('Downloading "' + it.name + '"', 'The TV is getting the theme from the Content Hub.', 0);
+        poll = setInterval(async () => { try { const pr = await getJson('/api/hub/progress'); if (pr.p >= 0) busy('Downloading "' + it.name + '"', 'The TV is getting the theme from the Content Hub.', pr.p); } catch (e) { } }, 700);
+      }
+      const got = await post('/api/hub/install', { type, id: it.id });
+      if (poll) { clearInterval(poll); poll = null; }
+      if (themes) { await post('/api/hub/theme', { id: it.id }); closeSheet(); waitForTv('"' + it.name + '" is downloaded'); return; }
+      else {
+        if (ctx.kind === 'icon' ? got.hasIcon === false : got.hasBanner === false) throw new Error(`That one has no ${ctx.kind === 'icon' ? 'tile' : 'preview'} picture`);
+        await post('/api/hub/apply', { page: ctx.t.page, pos: ctx.t.pos, kind: ctx.kind, id: it.id });
+        toast('Picture changed'); stamp = Date.now();
+      }
+      closeSheet(); load();
+    } catch (e) { if (poll) clearInterval(poll); busy(); toast(e.message, true); }
+  }
+
+  // ------------------------------------------------------------ sections
+  const views = { channels: $('vChannels'), theme: $('vTheme'), music: $('vMusic'), games: $('vGames') };
+  function showView(v) {
+    for (const [k, node] of Object.entries(views)) node.hidden = k !== v;
+    document.querySelectorAll('.sec').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $('tabs').style.display = v === 'channels' ? '' : 'none';
+    if (v === 'music') loadMusic();
+    if (v === 'games') loadGames();
+    if (v === 'theme') { loadMaker(); loadPost(); loadLook(); }
+  }
+
+  // ------------------------------------------------------------ games
+  const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  async function loadGames() {
+    try {
+      const j = await getJson('/api/games');
+      $('gameTypes').textContent = 'Disc images: ' + j.types;
+      $('gameWhere').textContent = j.games.length ? j.games.length + (j.games.length === 1 ? ' game' : ' games') + ' in ' + j.folder : 'No games here yet. Games on a USB drive show in the Disc Channel too.';
+      $('gameList').innerHTML = j.games.map(g => {
+        const cls = g.console === 'GameCube' ? 'gc' : g.console === 'Wii' ? 'wii' : '';
+        const tag = g.console === 'GameCube' ? 'GC' : g.console === 'Wii' ? 'Wii' : '?';
+        return '<li class="game"><div class="disc ' + cls + '">' + tag + '</div><div class="gt"><b>' + esc(g.title) + '</b><span>' + esc(g.console) +
+          (g.id ? ' · ' + esc(g.id) : '') + ' · ' + esc(g.size) + (g.recognized ? '' : ' · ' + esc(g.file)) + '</span></div>' +
+          '<button class="btn" data-del="' + esc(g.file) + '">Remove</button></li>';
+      }).join('');
+      document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('Remove "' + b.dataset.del + '" from the TV?')) return;
+        try { await post('/api/games/delete', { file: b.dataset.del }); toast('Removed'); loadGames(); } catch (e) { toast(e.message, true); }
+      });
+    } catch (e) { $('gameWhere').textContent = e.message; }
+  }
+  function sendGame(file) {
+    return new Promise((ok, fail) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', api('/api/games/upload', { name: file.name }));
+      x.upload.onprogress = ev => {
+        if (!ev.lengthComputable) return;
+        const pc = ev.loaded / ev.total * 100;
+        $('gameBar').style.width = pc.toFixed(1) + '%';
+        $('gameUpText').textContent = file.name + ': ' + pc.toFixed(0) + '% (' + (ev.loaded / 1048576).toFixed(0) + ' of ' + (ev.total / 1048576).toFixed(0) + ' MB)' +
+          (pc >= 99.9 && /\.(zip|7z)$/i.test(file.name) ? ' · unpacking on the TV, this can take a few minutes…' : '');
+      };
+      x.onload = () => { try { const j = JSON.parse(x.responseText); j.ok ? ok() : fail(new Error(j.error || 'That didn\'t work')); } catch (e) { fail(new Error('The TV answered ' + x.status)); } };
+      x.onerror = () => fail(new Error('The connection to the TV dropped'));
+      x.send(file);
+    });
+  }
+  async function sendGames(files) {
+    if (!files || !files.length) return;
+    $('gameUp').hidden = false;
+    let done = 0;
+    for (const f of files) {
+      $('gameBar').style.width = '0%';
+      try { await sendGame(f); done++; } catch (e) { toast(f.name + ': ' + e.message, true); }
+    }
+    $('gameUpText').textContent = done ? 'Done: ' + done + ' of ' + files.length + ' copied to the TV.' : 'Nothing was copied.';
+    if (done) toast(done === 1 ? 'Game added' : done + ' games added');
+    loadGames();
+  }
+  $('gameFile').onchange = () => { sendGames([...$('gameFile').files]); $('gameFile').value = ''; };
+  const gd = $('gameDrop');
+  ['dragenter', 'dragover'].forEach(n => gd.addEventListener(n, e => { e.preventDefault(); gd.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(n => gd.addEventListener(n, e => { e.preventDefault(); gd.classList.remove('over'); }));
+  gd.addEventListener('drop', e => sendGames([...e.dataTransfer.files]));
+
+  // ------------------------------------------------------------ theme maker
+  const PARTS = [
+    ['wallpaper', 'Wallpaper', 'picture'], ['emptyslot', 'Empty slot picture (a GIF animates)', 'picture'], ['music', 'Home music', 'sound'], ['click', 'Click sound', 'sound'],
+    ['hover', 'Hover sound', 'sound'], ['back', 'Back sound', 'sound'], ['open', 'Open channel sound', 'sound'],
+    ['leave', 'Leave channel sound', 'sound'], ['start', 'Start-up sound', 'sound'], ['shopmusic', 'Shop music', 'sound'],
+  ];
+  // a rough picture of the TV menu with the parts picked so far (wallpaper, empty slots, highlight colour, see-through slots)
+  const PREVIEW = {};
+  const CH = new Set(); // colours the person changed
+  const CDEF = { makerColor: '#12a8e0', makerBar: '#e8ebef', makerLine: '#20a6e0', makerText: '#8b8f96', makerBtn: '#f2f3f5' };
+  function setColor(id, v) { if (v == null) { CH.delete(id); $(id).value = CDEF[id]; } else { CH.add(id); $(id).value = v; } markColors(); drawPreview(); }
+  function markColors() { for (const id in CDEF) { const on = CH.has(id); $(id).parentElement.classList.toggle('on', on); $(id).parentElement.querySelector('.reset').hidden = !on; } }
+  function drawPreview() {
+    const box = $('makerPreview'); if (!box) return;
+    const col = CH.has('makerColor') ? $('makerColor').value : '#47c2ff';
+    const op = ($('makerEmpty').value || 100) / 100;
+    box.style.background = PREVIEW.wallpaper ? 'center/cover url(' + PREVIEW.wallpaper + ')' : 'linear-gradient(#f4f6f8,#dfe3e8)';
+    let cells = '';
+    for (let i = 0; i < 12; i++) {
+      const filled = i < 5, hover = i === 1;
+      const st = filled ? 'background:#fff' : (PREVIEW.emptyslot ? 'background:center/cover url(' + PREVIEW.emptyslot + ');opacity:' + op : 'background:repeating-linear-gradient(0deg,#cfd3d8 0 2px,#e2e5e8 2px 4px);opacity:' + op);
+      cells += '<div style="border-radius:8px;border:2px solid ' + (hover ? col : '#b9bec6') + ';' + (hover ? 'box-shadow:0 0 10px 3px ' + col + ';' : '') + st + '"></div>';
+    }
+    const pick = (id, d) => CH.has(id) ? $(id).value : d;
+    const barC = pick('makerBar', 'rgba(235,238,242,.92)'), lineC = pick('makerLine', col), textC = pick('makerText', '#555'), btnC = pick('makerBtn', '#f2f3f5');
+    const btn = '<span style="width:30px;height:30px;border-radius:50%;background:' + btnC + ';border:2px solid ' + lineC + ';flex:none"></span>';
+    box.innerHTML = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px 10px 0;height:72%">' + cells + '</div>' +
+      '<div style="height:28%;margin-top:6px;border-top:3px solid ' + lineC + ';background:' + barC + ';border-radius:40% 40% 0 0/30% 30% 0 0;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font:600 13px sans-serif;color:' + textC + '">' + btn + '<span>12:00<br><small style="font-weight:500">Sun 8/11</small></span>' + btn + '</div>';
+  }
+  async function loadMaker() {
+    let st;
+    try { st = await getJson('/api/maker'); } catch (e) { $('makerParts').textContent = 'Can\'t reach the TV.'; return; }
+    $('makerWarn').hidden = !st.glass;
+    const box = $('makerParts'); box.innerHTML = '';
+    for (const [slot, label, kind] of PARTS) {
+      const has = st.parts[slot];
+      const row = document.createElement('div'); row.className = 'row'; row.style.alignItems = 'center';
+      const name = document.createElement('div'); name.style.flex = '1 1 200px';
+      name.innerHTML = `<b>${label}</b><br><span class="muted">${has ? 'New: ' + has.replace(/[<>&]/g, '') : 'Unchanged'}</span>`;
+      const pick = document.createElement('button'); pick.className = 'btn soft'; pick.textContent = has ? 'Change' : 'Choose';
+      pick.style.flex = '0 0 auto';
+      pick.onclick = () => {
+        const f = kind === 'picture' ? $('file') : $('audioFile'); f.value = '';
+        f.onchange = async () => {
+          const file = f.files[0]; if (!file) return;
+          if (file.size > 24 * 1024 * 1024) return toast('That file is over 24 MB', true);
+          toast('Sending to the TV…');
+          try { await post('/api/maker/part', { slot, file: file.name }, file); toast(label + ' ready'); if (kind === 'picture') { PREVIEW[slot] = URL.createObjectURL(file); drawPreview(); } loadMaker(); } catch (e) { toast(e.message, true); }
+        };
+        f.click();
+      };
+      row.append(name, pick);
+      if (has) {
+        const clr = document.createElement('button'); clr.className = 'btn soft'; clr.textContent = 'Undo'; clr.style.flex = '0 0 auto';
+        clr.onclick = async () => { try { await post('/api/maker/part', { slot, clear: 1 }); delete PREVIEW[slot]; drawPreview(); loadMaker(); } catch (e) { toast(e.message, true); } };
+        row.append(clr);
+      }
+      box.append(row);
+    }
+  }
+  // hover light colour + empty slot see-through
+  const GLOWS = [['auto','Normal'],['#47C2FF','Wii Blue'],['#3CF0FF','Cyan'],['#4CFF7A','Green'],['#B6FF3C','Lime'],['#FFE53C','Yellow'],['#FF9A3C','Orange'],['#FF4C4C','Red'],['#FF6FD2','Pink'],['#A77CFF','Purple'],['#FFFFFF','White']];
+  function showGlow(v) {
+    const c = v === 'auto' ? '#47c2ff' : v;
+    $('glowSample').style.boxShadow = '0 0 0 3px ' + c + ', 0 0 18px 6px ' + c;
+    document.querySelectorAll('#glowSwatches .sw').forEach(b => b.classList.toggle('on', b.dataset.c.toLowerCase() === v.toLowerCase()));
+    if (v !== 'auto') $('glowPick').value = v.toLowerCase();
+  }
+  async function setGlow(v) {
+    showGlow(v);
+    try { await post('/api/look/glow', { color: v }); toast(v === 'auto' ? 'Hover light: Normal' : 'Hover light colour set'); } catch (e) { toast(e.message, true); }
+  }
+  $('glowSwatches').innerHTML = GLOWS.map(([c, n]) => '<button class="sw' + (c === 'auto' ? ' auto' : '') + '" data-c="' + c + '" title="' + n + '" aria-label="' + n + '"' + (c === 'auto' ? '' : ' style="background:' + c + '"') + '></button>').join('');
+  document.querySelectorAll('#glowSwatches .sw').forEach(b => b.onclick = () => setGlow(b.dataset.c));
+  $('glowPick').onchange = () => setGlow($('glowPick').value.toUpperCase());
+  $('glowPick').oninput = () => showGlow($('glowPick').value);
+  $('emptyRange').oninput = () => { $('emptyVal').textContent = $('emptyRange').value + '%'; };
+  $('emptyRange').onchange = async () => {
+    try { await post('/api/look/empty', { percent: $('emptyRange').value }); toast('Empty slots: ' + $('emptyRange').value + '% visible'); } catch (e) { toast(e.message, true); loadLook(); }
+  };
+  $('makerEmpty').oninput = () => { $('makerEmptyVal').textContent = $('makerEmpty').value + '%'; drawPreview(); };
+  for (const id in CDEF) $(id).oninput = () => setColor(id, $(id).value);
+  document.querySelectorAll('.cpick .reset').forEach(b => b.onclick = () => setColor(b.dataset.for, null));
+  setTimeout(drawPreview, 0);
+  async function loadLook() {
+    try {
+      const j = await getJson('/api/look');
+      showGlow(j.glow || 'auto');
+      const e = j.empty || {};
+      $('emptyRange').value = e.percent || 100; $('emptyVal').textContent = (e.percent || 100) + '%';
+      $('emptyRange').disabled = !e.editable;
+      $('emptyNote').textContent = e.editable ? 'How solid the empty channel slots look in the theme in use (100% = normal). Saved into the theme, so it goes along if you post it.'
+        : e.glass ? 'Glass 2026 is on: its empty slots are glass. Turn it off on the TV to change this.' : "Revo\'s own looks keep normal slots. Use or make a custom theme (above) to change this.";
+    } catch (e) { toast(e.message, true); }
+  }
+  async function loadPost() {
+    let st;
+    try { st = await getJson('/api/hub/mine'); } catch (e) { $('postWho').textContent = "Can\'t reach the TV."; return; }
+    $('postWho').textContent = st.signedIn ? 'Posting as ' + (st.user || 'your account') : 'The TV isn\'t signed in. On the TV: Revo Shop > Sign in, then come back here.';
+    $('postBtn').disabled = !st.signedIn;
+    const sel = $('postTheme'); sel.innerHTML = '';
+    const prev = st.previews || [];
+    if (!st.themes.length && !prev.length) { const o = document.createElement('option'); o.textContent = 'Nothing of your own yet: make a theme or a channel picture first'; sel.append(o); $('postBtn').disabled = true; return; }
+    if (st.themes.length) {
+      const g = document.createElement('optgroup'); g.label = 'Themes';
+      for (const t of st.themes) {
+        const o = document.createElement('option'); o.value = t.file; o.dataset.name = t.name;
+        o.textContent = t.name + (t.inUse ? '  (in use)' : '') + (t.made ? '  (made here)' : '');
+        g.append(o);
+      }
+      sel.append(g);
+    }
+    if (prev.length) {
+      const g = document.createElement('optgroup'); g.label = 'Channel pictures and previews';
+      for (const p of prev) {
+        const o = document.createElement('option'); o.value = 'ch:' + p.page + ':' + p.pos; o.dataset.name = p.name || 'My channel';
+        o.textContent = (p.name || 'Channel') + ' (' + [p.icon ? 'tile picture' : '', p.banner ? 'preview' : ''].filter(Boolean).join(' + ') + ')';
+        g.append(o);
+      }
+      sel.append(g);
+    }
+    sel.onchange = () => { const o = sel.selectedOptions[0]; if (o && !$('postName').value) $('postName').value = o.dataset.name || ''; };
+    sel.onchange();
+  }
+  $('postBtn').onclick = async () => {
+    const file = $('postTheme').value, name = $('postName').value.trim(), desc = $('postDesc').value.trim();
+    if (!name || !desc) return toast('Give it a name and a short description', true);
+    toast('Posting from the TV… (the TV takes a picture for the preview)');
+    try {
+      const ch = file.startsWith('ch:') ? file.split(':') : null;
+      const r = await fetch(ch ? api('/api/hub/postpreview', { page: ch[1], pos: ch[2], name }) : api('/api/hub/post', { file, name }), { method: 'POST', body: desc });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'That didn\'t work');
+      toast(j.message || 'Posted');
+    } catch (e) { toast(e.message, true); }
+  };
+  $('makerSave').onclick = () => saveTheme();
+  async function saveTheme() {
+    const name = $('makerName').value.trim();
+    if (!name) { toast('Give your theme a name first', true); return false; }
+    busy('Building "' + name + '"', 'The TV is putting your theme together…');
+    try {
+      const c = id => CH.has(id) ? $(id).value : '';
+      await post('/api/maker/save', { name, from: $('makerFrom').value, color: c('makerColor'), empty: $('makerEmpty').value,
+        bar: c('makerBar'), line: c('makerLine'), text: c('makerText'), btn: c('makerBtn') });
+      CH.clear(); markColors();
+      waitForTv('"' + name + '" is saved');
+      return true;
+    } catch (e) { busy(); toast(e.message, true); return false; }
+  }
+
+  // ------------------------------------------------------------ easy setup: one question at a time (like the TV's controller setup)
+  function sendPart(slot, label, kind, after) {
+    const f = kind === 'picture' ? $('file') : $('audioFile'); f.value = '';
+    f.onchange = async () => {
+      const file = f.files[0]; if (!file) return;
+      if (file.size > 24 * 1024 * 1024) return toast('That file is over 24 MB', true);
+      toast('Sending to the TV…');
+      try { await post('/api/maker/part', { slot, file: file.name }, file); if (kind === 'picture') PREVIEW[slot] = URL.createObjectURL(file); toast(label + ' ready'); loadMaker(); after && after(file); }
+      catch (e) { toast(e.message, true); }
+    };
+    f.click();
+  }
+  const BARS = [
+    ['Wii white', 'Light grey bar, blue line', { makerBar: '#e8ebef', makerLine: '#20a6e0', makerText: '#8b8f96', makerBtn: '#f2f3f5' }],
+    ['Night', 'Dark bar, bright blue line', { makerBar: '#1b2230', makerLine: '#47c2ff', makerText: '#e8eef5', makerBtn: '#2a3444' }],
+    ['Match my highlight', 'Dark bar with your highlight colour', null],
+    ['Keep the bar as it is', 'No change', {}],
+  ];
+  function easySetup() {
+    const W = { step: 0 };
+    const steps = [
+      { t: 'What should your theme be called?', b: s => {
+          const i = el('input', { type: 'text', value: $('makerName').value, placeholder: 'For example: Bubby\'s Blue', maxLength: 40 });
+          i.oninput = () => $('makerName').value = i.value; s.append(i);
+          return () => { if (!i.value.trim()) { toast('Type a name first', true); return false; } return true; };
+        } },
+      { t: 'Start from…', b: s => {
+          const box = el('div', { className: 'choices' });
+          [['current', 'The theme on the TV now', 'Keeps its looks; you change only what you pick next'], ['default', 'Revo\'s clean white look', 'A fresh start']].forEach(([v, a, b]) => {
+            const c = el('button', { className: 'choice' + ($('makerFrom').value === v ? ' on' : '') }, a, el('small', { textContent: b }));
+            c.onclick = () => { $('makerFrom').value = v; box.querySelectorAll('.choice').forEach(x => x.classList.remove('on')); c.classList.add('on'); };
+            box.append(c);
+          });
+          s.append(box);
+        } },
+      { t: 'Wallpaper', d: 'A photo or GIF behind the channels.', b: s => {
+          const st = el('p', { className: 'muted', textContent: PREVIEW.wallpaper ? 'Picked.' : 'Nothing picked yet.' });
+          const b = el('button', { className: 'btn', textContent: 'Choose a picture' }); b.onclick = () => sendPart('wallpaper', 'Wallpaper', 'picture', () => { st.textContent = 'Picked.'; drawPreview(); });
+          s.append(st, b);
+        } },
+      { t: 'Highlight colour', d: 'The colour of the light around what the remote is on.', b: s => {
+          const sw = el('div', { className: 'swatches' });
+          GLOWS.filter(([c]) => c !== 'auto').forEach(([c, n]) => {
+            const b = el('button', { className: 'sw' + (CH.has('makerColor') && $('makerColor').value.toLowerCase() === c.toLowerCase() ? ' on' : ''), title: n, 'aria-label': n }); b.style.background = c;
+            b.onclick = () => { setColor('makerColor', c.toLowerCase()); sw.querySelectorAll('.sw').forEach(x => x.classList.remove('on')); b.classList.add('on'); };
+            sw.append(b);
+          });
+          const any = el('div', { className: 'cpick' }); const ci = el('input', { type: 'color', value: $('makerColor').value }); ci.oninput = () => setColor('makerColor', ci.value);
+          any.append(ci, el('span', { textContent: 'Any colour' }));
+          s.append(sw, any);
+        } },
+      { t: 'Bottom bar', d: 'The bar with the time and the round buttons.', b: s => {
+          const box = el('div', { className: 'choices' });
+          BARS.forEach(([a, b, set]) => {
+            const c = el('button', { className: 'choice' }, a, el('small', { textContent: b }));
+            c.onclick = () => {
+              box.querySelectorAll('.choice').forEach(x => x.classList.remove('on')); c.classList.add('on');
+              ['makerBar', 'makerLine', 'makerText', 'makerBtn'].forEach(id => setColor(id, null));
+              const v = set || { makerBar: '#1b2230', makerLine: CH.has('makerColor') ? $('makerColor').value : '#47c2ff', makerText: '#e8eef5', makerBtn: '#2a3444' };
+              for (const id in v) setColor(id, v[id]);
+            };
+            box.append(c);
+          });
+          s.append(box);
+        } },
+      { t: 'Empty slots', d: 'A picture for the empty channel slots (a GIF moves), and how see-through they are.', b: s => {
+          const st = el('p', { className: 'muted', textContent: PREVIEW.emptyslot ? 'Picked.' : 'Nothing picked yet (they stay as they are).' });
+          const b = el('button', { className: 'btn soft', textContent: 'Choose a picture' }); b.onclick = () => sendPart('emptyslot', 'Empty slot picture', 'picture', () => { st.textContent = 'Picked.'; drawPreview(); });
+          const lab = el('label', { className: 'lbl', textContent: $('makerEmpty').value + '% visible' });
+          const r = el('input', { type: 'range', min: 10, max: 100, step: 5, value: $('makerEmpty').value }); r.oninput = () => { $('makerEmpty').value = r.value; $('makerEmptyVal').textContent = r.value + '%'; lab.textContent = r.value + '% visible'; drawPreview(); };
+          s.append(st, b, lab, r);
+        } },
+      { t: 'Sounds', d: 'Music for the Home menu and the click sound. Pick a file, or skip.', b: s => {
+          [['music', 'Home music'], ['click', 'Click sound']].forEach(([slot, label]) => {
+            const st = el('span', { className: 'muted', textContent: ' Unchanged' });
+            const b = el('button', { className: 'btn soft', textContent: label }); b.onclick = () => sendPart(slot, label, 'sound', f => st.textContent = ' ' + f.name);
+            s.append(el('div', { className: 'row' }, b, st));
+          });
+        } },
+      { t: 'All set. Here is how it will look', b: s => {
+          const pv = el('div', { className: 'mpreview' }); s.append(pv);
+          const real = $('makerPreview'); real.id = ''; pv.id = 'makerPreview'; drawPreview(); pv.id = ''; real.id = 'makerPreview';
+          s.append(el('p', { className: 'muted', textContent: 'Saving puts it on: the TV restarts once (press A on its start-up screen).' }));
+        }, last: true },
+    ];
+    const show = () => openSheet(sh => {
+      const st = steps[W.step];
+      sh.append(el('div', { className: 'steps' }, ...steps.map((_, k) => el('i', { className: k <= W.step ? 'on' : '' }))));
+      sh.append(el('p', { className: 'muted', textContent: 'Step ' + (W.step + 1) + ' of ' + steps.length }));
+      sh.append(el('h2', { textContent: st.t }));
+      if (st.d) sh.append(el('p', { className: 'muted', textContent: st.d }));
+      const body = el('div'); sh.append(body);
+      const check = st.b(body);
+      const back = el('button', { className: 'btn soft', textContent: W.step ? 'Back' : 'Close' });
+      back.onclick = () => { if (W.step) { W.step--; show(); } else closeSheet(); };
+      const next = el('button', { className: 'btn', textContent: st.last ? 'Save and use it' : 'Next' });
+      next.onclick = async () => {
+        if (check && check() === false) return;
+        if (st.last) { closeSheet(); await saveTheme(); return; }
+        W.step++; show();
+      };
+      const row = el('div', { className: 'row' }, back);
+      if (!st.last && W.step > 0) { const skip = el('button', { className: 'btn soft', textContent: 'Skip' }); skip.onclick = () => { W.step++; show(); }; row.append(skip); }
+      row.append(next);
+      sh.append(row);
+    });
+    show();
+  }
+  $('easyStart').onclick = easySetup;
+
+  // ------------------------------------------------------------ find a sound online (Openverse: free Creative Commons music and sounds)
+  function openSoundSearch(to, t) {
+    openSheet(sh => {
+      sh.append(el('h2', { textContent: to === 'home' ? 'Find Home music' : 'Find a preview sound' }));
+      sh.append(el('p', { className: 'muted', textContent: 'Free music and sounds from openverse.org (Creative Commons, free to use). Press play to listen here, then Use it.' }));
+      const q = el('input', { type: 'search', placeholder: to === 'home' ? 'For example: calm piano, chiptune, lofi' : 'For example: jingle, cartoon, fanfare' });
+      const go = el('button', { className: 'btn', textContent: 'Search' });
+      const list = el('div');
+      sh.append(el('div', { className: 'row' }, q, go), list);
+      let player = null;
+      const search = async () => {
+        if (q.value.trim().length < 2) return;
+        list.innerHTML = ''; list.append(el('p', { className: 'muted', textContent: 'Searching…' }));
+        try {
+          const r = await post('/api/sound/search', { q: q.value.trim() });
+          list.innerHTML = '';
+          if (!r.results.length) list.append(el('p', { className: 'muted', textContent: 'Nothing found: try other words.' }));
+          r.results.forEach(it => {
+            const play = el('button', { className: 'btn soft', textContent: '\u25B6' });
+            play.onclick = () => {
+              if (player && player.dataset.u === it.url && !player.paused) { player.pause(); play.textContent = '\u25B6'; return; }
+              if (player) player.pause();
+              list.querySelectorAll('.snd .btn.soft').forEach(b => b.textContent = '\u25B6');
+              player = new Audio(it.url); player.dataset.u = it.url; player.play().catch(() => toast('That one can\'t play here, but you can still use it', true)); play.textContent = '\u275A\u275A';
+            };
+            const use = el('button', { className: 'btn', textContent: 'Use' });
+            use.onclick = async () => {
+              if (player) player.pause();
+              busy('Getting the sound', 'The TV is downloading "' + it.title + '"…');
+              try { await post('/api/sound/use', { url: it.url, name: it.title, to, page: t ? t.page : -1, pos: t ? t.pos : -1 }); busy(); toast(to === 'home' ? 'Home music set' : 'Preview sound set'); closeSheet(); to === 'home' ? loadMusic() : load(); }
+              catch (e) { busy(); toast(e.message, true); }
+            };
+            const len = it.seconds ? ' \u00B7 ' + Math.floor(it.seconds / 60) + ':' + String(it.seconds % 60).padStart(2, '0') : '';
+            list.append(el('div', { className: 'snd' }, play, el('div', { className: 't' }, el('b', { textContent: it.title || 'Untitled' }), el('span', { textContent: (it.by || 'unknown') + ' \u00B7 CC ' + it.license + len })), use));
+          });
+        } catch (e) { list.innerHTML = ''; list.append(el('p', { className: 'muted', textContent: e.message })); }
+      };
+      go.onclick = search; q.onkeydown = e => { if (e.key === 'Enter') search(); };
+    });
+  }
+
+  document.querySelectorAll('.sec').forEach(b => b.onclick = () => showView(b.dataset.v));
+  $('browseThemes').onclick = () => openHub('themes', {});
+
+  async function loadMusic() {
+    try { const m = await getJson('/api/homemusic'); $('musicNow').textContent = m.has ? 'Your song is playing in the Home menu: ' + (m.name || '') : 'Revo\'s own music is playing.'; $('musicClear').disabled = !m.has; }
+    catch (e) { $('musicNow').textContent = 'Can\'t reach the TV.'; }
+  }
+  $('musicPick').onclick = () => {
+    const f = $('audioFile'); f.value = '';
+    f.onchange = async () => {
+      const file = f.files[0]; if (!file) return;
+      if (file.size > 24 * 1024 * 1024) return toast('That file is over 24 MB', true);
+      toast('Sending the song to the TV…');
+      try { await post('/api/homemusic', { file: file.name }, file); toast('Home music changed'); loadMusic(); } catch (e) { toast(e.message, true); }
+    };
+    f.click();
+  };
+  $('musicFind').onclick = () => openSoundSearch('home');
+  $('musicClear').onclick = async () => { try { await post('/api/homemusic', { clear: 1 }); toast('Back to Revo\'s music'); loadMusic(); } catch (e) { toast(e.message, true); } };
+
+  window.addEventListener('resize', () => state && render());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  load();
+})();
+</script>
+</body>
+</html>

@@ -81,3 +81,12 @@ crashlytics-build.properties
 /node_modules/
 .DS_Store
 package-lock.json
+
+# RevoTV: the app file goes in Releases (over GitHub's 100 MB file limit); dev leftovers
+/RevoTV.apk
+debug.log
+/globe_*.txt
+/globe_patch.py
+/bartone.py
+*.pftrace
+/tools/py/

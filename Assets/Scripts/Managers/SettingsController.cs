@@ -191,7 +191,8 @@ public class SettingsController : MonoBehaviour
         if (toMainMenu)
         {
             AppController._instance.ShowMainMenu();
-            CameraController.UnlockHorizontalMode();
+            // a TV never rotated: re-measuring the canvas on the way back only made the tiles flash at a wrong size
+            if (!TVMode.IsTV) CameraController.UnlockHorizontalMode();
             int grid = firstGrid ? 0 : GridController._instance.currentGrid.number;
             GridController._instance.ChangeGrid(grid, true, 0f);
 
@@ -557,12 +558,21 @@ public class SettingsController : MonoBehaviour
         ClearSearch(); // we clear the previous state
         searchIcon.SetActive(true);
         helpIcon.SetActive(false);
+        SetHelpButton(true);
+    }
+
+    // on a TV the "?" only opens a web page in a browser the remote can't use: its button is not shown (the search one is)
+    private void SetHelpButton(bool searching)
+    {
+        var b = helpIcon != null ? helpIcon.GetComponentInParent<Button>(true) : null;
+        if (b != null) b.gameObject.SetActive(searching || !TVMode.IsTV);
     }
 
     private void ClearSearch()
     {
         helpIcon.SetActive(true);
         searchIcon.SetActive(false);
+        SetHelpButton(false);
         searchField.text = null;
         SetSearchField(false);
         searchDictionary.Clear();
@@ -699,6 +709,7 @@ public class SettingsController : MonoBehaviour
 
     public void OnHoldWiiMenu()
     {
+        if (TVMode.IsTV) return; // on a TV, holding the Revo button does nothing (the app list is in Settings)
         #if !UNITY_IOS // can't list your apps in iOS
         StartCoroutine(_OpenAppsSelection(listAppsSettingView));
         #endif
@@ -709,6 +720,21 @@ public class SettingsController : MonoBehaviour
         FadeController._instance.FadeInAndOut(0.2f,0.1f,0.2f);
         yield return new WaitForSeconds(0.25f * FadeController.GetSpeedMultiplier());
         target.Show();
+    }
+
+    // a theme can make the list open part-way down (the "Back to normal look" and reset buttons are at its top): start at the top
+    public void ScrollToTopSoon()
+    {
+        var sr = optionsHolder != null ? optionsHolder.GetComponentInParent<ScrollRect>() : null;
+        if (sr != null) StartCoroutine(_ScrollTop(sr));
+    }
+
+    private IEnumerator _ScrollTop(ScrollRect sr)
+    {
+        yield return null;
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        if (sr != null) sr.verticalNormalizedPosition = 1f;
     }
 
     public void SetContentPivot(float pivot)
@@ -800,7 +826,11 @@ public class SettingsController : MonoBehaviour
             prefab.transform.Find("Checkmark").Find("Icon").gameObject.SetActive(true);
         }
         
-        prefab.GetComponent<Button>().onClick.AddListener(callback);
+        // on a TV a theme row says "turn Glass off" before anything is loaded (loading the whole theme first took a minute)
+        if (!isAnim && TVMode.IsTV)
+            prefab.GetComponent<Button>().onClick.AddListener(() => { if (!TVThemes.GlassBlocks()) callback(); });
+        else
+            prefab.GetComponent<Button>().onClick.AddListener(callback);
         if (isAnim)
         {
             prefab.GetComponent<LongClickButton>().onLongClick.AddListener(() =>
@@ -816,17 +846,20 @@ public class SettingsController : MonoBehaviour
         {
             prefab.GetComponent<LongClickButton>().onLongClick.AddListener(() =>
             {
-                themeEditSettingView.OnSelectedTheme(ThemeController._instance.GetOrLoadTheme(info.animationFileName));
+                // holding OK on a TV asks whether to delete the theme (the theme editor is for phones)
+                if (TVMode.IsTV) TVThemes.AskDelete(info);
+                else themeEditSettingView.OnSelectedTheme(ThemeController._instance.GetOrLoadTheme(info.animationFileName));
             });
         }
     }
 
-    public void ApplyTheme(Theme theme, bool useWallpaper)
+    public void ApplyTheme(Theme theme, bool useWallpaper, bool refreshList = true)
     {
+        if (TVMode.IsTV && TVGlass.On) { PopupController.ShowPopup("tv.theme.glass"); return; }
         PopupController.ShowPopup("popup.themeapplied");
         PREFS.UseThemeWallpaper.SetBool(useWallpaper);
         ThemeController._instance.SetNewTheme(theme, unloadPrevious: !ThemeController._instance.GetCurrentTheme().Equals(theme));
-        themeApplySettingView.Show();
+        if (refreshList) themeApplySettingView.Show();
     }
 
     public void RequestExportTheme(Theme theme)
@@ -896,6 +929,7 @@ public class SettingsController : MonoBehaviour
 
     public void OnSelectedWallpaper()
     {
+        if (TVThemes.GlassBlocks("tv.wallpaper.glass")) return; // 2026 draws its own room: no wallpaper to change
         wallpaperSettingView.Show();
     }
 

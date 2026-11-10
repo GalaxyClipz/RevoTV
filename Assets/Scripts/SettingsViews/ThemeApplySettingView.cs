@@ -35,6 +35,11 @@ namespace SettingsViews
             }
             else
             {
+                if (TVMode.IsTV)
+                {
+                    TVThemes.Offer(theme);
+                    return;
+                }
                 if (theme.wallpaper != null)
                 {
                     PopupController.ShowPopup("popup.usewallpaper", () => _instance.ApplyTheme(theme, true),

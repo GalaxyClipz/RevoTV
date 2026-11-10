@@ -1,17 +1,21 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.unity3d.player" xmlns:tools="http://schemas.android.com/tools">
   <application android:allowBackup="false">
-    <provider android:name="androidx.core.content.FileProvider" android:authorities="com.karuzohikari.wiiphone.fileprovider" android:exported="false" android:grantUriPermissions="true">
+    <!-- lets Android's own profilers (Perfetto / simpleperf) sample this release build; changes nothing for users -->
+    <profileable android:shell="true" />
+    <provider android:name="androidx.core.content.FileProvider" android:authorities="com.karuzohikari.bubbyfork.fileprovider" android:exported="false" android:grantUriPermissions="true">
       <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_paths" />
     </provider>
-    <activity android:name="com.unity3d.player.UnityPlayerActivity" android:theme="@style/UnityThemeSelector">
+    <activity android:name="com.karuzohikari.revotv.RevoActivity" android:theme="@style/UnityThemeSelector" android:exported="true" android:banner="@drawable/revotv_banner">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
+        <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
       </intent-filter>
+      <!-- the HOME entry lives only on the ".launcher" alias below, turned on and off by "Use as home screen" -->
       <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
     </activity>
-    <activity-alias android:enabled="false" android:exported="true" android:name=".launcher" android:targetActivity="com.unity3d.player.UnityPlayerActivity">
+    <activity-alias android:enabled="false" android:exported="true" android:name=".launcher" android:targetActivity="com.karuzohikari.revotv.RevoActivity">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.HOME" />
@@ -19,7 +23,10 @@
       </intent-filter>
     </activity-alias>
   </application>
+  <uses-feature android:name="android.software.leanback" android:required="false" />
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
   <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+  <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />

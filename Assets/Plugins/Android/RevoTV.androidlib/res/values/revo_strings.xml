@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="revo_home_label">Revo Make Home</string>
+  <string name="revo_home_description">Lets Revo answer the remote\'s Home button, and in games lets you hold Back for 7 seconds to quit. Only key presses and which app is in front are used; nothing on the screen is read.</string>
+</resources>

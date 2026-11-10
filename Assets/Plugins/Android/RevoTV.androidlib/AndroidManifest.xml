@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- Disc Channel game picker: reads disc images from storage and USB drives (the person allows it once) -->
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+  <application>
+    <!-- the Photo Channel: Google Photos' website inside Revo -->
+    <activity
+        android:name="com.karuzohikari.revotv.PhotosActivity"
+        android:process=":photos"
+        android:exported="false"
+        android:enableOnBackInvokedCallback="false"
+        android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation|uiMode"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+    <!-- "Home button opens Revo": TVs whose own home screen can't be replaced (Android TV, Google TV, Fire TV).
+         Only acts while the switch in Revo's Preferences is on. -->
+    <service
+        android:name="com.karuzohikari.revotv.HomeService"
+        android:exported="true"
+        android:label="@string/revo_home_label"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+      </intent-filter>
+      <meta-data
+          android:name="android.accessibilityservice"
+          android:resource="@xml/revo_home_service" />
+    </service>
+  </application>
+</manifest>

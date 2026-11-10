@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,13 +17,22 @@ public static class PREFS
     public static UnityBoolPreference FirstTimeCurrentVersion = new UnityBoolPreference("FirstTimeOpening_" + Application.version, true);
     public static UnityBoolPreference OpenDirectly = new UnityBoolPreference("OpenDirectly", false);
     public static UnityBoolPreference HasOpenedEditor = new UnityBoolPreference("HasOpenedEditor", false);
+    public static UnityIntPreference TvRenderHeight = new UnityIntPreference("TvRenderHeight", 720); // 0 = native; 720p measured ~25 fps vs ~29 at 540p, visibly sharper
+    public static UnityBoolPreference Glass2026 = new UnityBoolPreference("Glass2026", true);
+    public static UnityBoolPreference HdmiButton = new UnityBoolPreference("HdmiButton", true);
+    public static UnityBoolPreference TvHomeButton = new UnityBoolPreference("TvHomeButton", false); // Home button opens Revo
+    public static UnityStringPreference TvGlowColor = new UnityStringPreference("TvGlowColor", "auto"); // hover light colour (TVGlowColor)
+    public static UnityBoolPreference TvScreenGlint = new UnityBoolPreference("TvScreenGlint", true); // the slow light sweep across the whole screen
+    public static UnityBoolPreference TvHolidays = new UnityBoolPreference("TvHolidays", true); // little seasonal decorations on the home menu (TVHoliday)
+    public static UnityBoolPreference TvCoolMode = new UnityBoolPreference("TvCoolMode", true); // menu capped at 20 fps: less heat
+    public static UnityBoolPreference TvCoolIdle = new UnityBoolPreference("TvCoolIdle", true); // slower frames while nobody presses anything
     public static UnityBoolPreference ShowCursor = new UnityBoolPreference("ShowCursor", false);
     public static UnityBoolPreference ShowNavigationBar = new UnityBoolPreference("ShowNavigationBar", false);
     public static UnityBoolPreference SetNewRevoChannels = new UnityBoolPreference("SetNewRevoChannels", false);
     public static UnityBoolPreference ShowLoadingBar = new UnityBoolPreference("ShowLoadingBar", true);
     public static UnityBoolPreference HasOpenedRatings = new UnityBoolPreference("HasOpenedRatings", false);
-    public static UnityBoolPreference Is12Format = new UnityBoolPreference("Is12Format", false);
-    public static UnityBoolPreference AllowHorizontal = new UnityBoolPreference("AllowHorizontal", false);
+    public static UnityBoolPreference Is12Format = new UnityBoolPreference("Is12Format", true);
+    public static UnityBoolPreference AllowHorizontal = new UnityBoolPreference("AllowHorizontal", TVMode.IsTV);
     public static UnityBoolPreference IsAmericanDate = new UnityBoolPreference("IsAmericanFormat", false);
     public static UnityBoolPreference CrashedDuringLoad = new UnityBoolPreference("CrashedDuringLoad", false);
     //public static UnityBoolPreference LowMemoryMode = new UnityBoolPreference("LowMemoryMode", true);
@@ -62,6 +71,7 @@ public static class PREFS
     // Integers
     public static UnityIntPreference NumberOfPages = new UnityIntPreference("NumberOfPages", 4);
     public static UnityIntPreference LastOpenBundle = new UnityIntPreference("LastOpenBundle", 0);
+    public static UnityIntPreference HdmiPort = new UnityIntPreference("HdmiPort", 1);
     public static UnityIntPreference TargetFramerate = new UnityIntPreference("TargetFramerate", 120);
     public static UnityIntPreference NumberAppsX = new UnityIntPreference("NumberAppsX", 2);
     public static UnityIntPreference NumberAppsXHorizontal = new UnityIntPreference("NumberAppsXHorizontal", -1);

@@ -42,7 +42,14 @@ public class WallpaperController : MonoBehaviour
         {
             // we replace it if we're inside the editor, or if the theme has one and we want to use it
             ThemeTexture wall = ThemeController._instance.currentTheme.wallpaper;
-            if (wall != null && (wall.isVideo || wall.texture is not null))
+            // a TV plays the video too, unless it couldn't keep up with that theme's video before (TVVideoWall): then a still picture
+            bool tvStill = wall != null && TVMode.IsTV && wall.isVideo && !TVVideoWall.Allowed(ThemeController._instance.currentTheme.GetImportedFileName());
+            if (tvStill)
+            {
+                var still = TVStill.Get(wall, ThemeController._instance.currentTheme.GetImportedFileName()); // a picture from the video instead of playing it
+                if (still != null) { currentWallpaper = still; return; }
+            }
+            if (wall != null && !tvStill && (wall.isVideo || wall.texture is not null))
             {
                 currentWallpaper = wall;
                 return;
@@ -212,7 +219,7 @@ public class WallpaperController : MonoBehaviour
         
         // we check if we need to load a video wallpaper
         bool isVideo = currentWallpaper != null && currentWallpaper.isVideo;
-        videoPlayer.sendFrameReadyEvents = isVideo;
+        videoPlayer.sendFrameReadyEvents = isVideo && !TVMode.IsTV; // TV: TVVideoWall hands the picture over once (an event every frame costs the menu time)
         
         if (isVideo)
         {

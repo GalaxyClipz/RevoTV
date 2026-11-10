@@ -125,6 +125,40 @@ public class AnimatedImage : HasOptions
         });
     }
 
+    // TV: a tile's picture is drawn ~280 px wide (its 1024 canvas at 720p), yet pictures came in at full size: a 1080x1919 one held
+    // 10.5 MB (measured 2026-11-07). Pictures over 768 px are redrawn at 768 (still well over what the tile shows), halving at most
+    // each step so detail stays smooth, without mip levels; the original is freed. Preview banners are left as they are.
+    private const int TvIconCap = 768;
+    [JsonIgnore] private Vector2 nativeSize; // the original picture's pixel size when it was shrunk (0 = not shrunk)
+    private static Texture2D TvIconSize(Texture2D src)
+    {
+        if (src == null || Mathf.Max(src.width, src.height) <= TvIconCap) return src;
+        int w = src.width, h = src.height;
+        float k = (float) TvIconCap / Mathf.Max(w, h);
+        int tw = Mathf.Max(1, Mathf.RoundToInt(w * k)), th = Mathf.Max(1, Mathf.RoundToInt(h * k));
+        var prev = RenderTexture.active;
+        Texture cur = src; RenderTexture curRt = null;
+        while (true)
+        {
+            int nw = Mathf.Max(tw, cur.width / 2), nh = Mathf.Max(th, cur.height / 2);
+            var rt = RenderTexture.GetTemporary(nw, nh, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            rt.filterMode = FilterMode.Bilinear;
+            Graphics.Blit(cur, rt);
+            if (curRt != null) RenderTexture.ReleaseTemporary(curRt);
+            curRt = rt; cur = rt;
+            if (nw == tw && nh == th) break;
+        }
+        RenderTexture.active = curRt;
+        var small = new Texture2D(tw, th, TextureFormat.RGBA32, false);
+        small.ReadPixels(new Rect(0, 0, tw, th), 0, 0);
+        small.Apply(false, true);
+        small.wrapMode = src.wrapMode; small.filterMode = FilterMode.Bilinear;
+        RenderTexture.active = prev;
+        RenderTexture.ReleaseTemporary(curRt);
+        UnityEngine.Object.Destroy(src);
+        return small;
+    }
+
     // sometimes the image doesn't load properly at first but it does the second time? don't know why
     private IEnumerator _LoadImage(string path, int attempt)
     {
@@ -153,6 +187,11 @@ public class AnimatedImage : HasOptions
             else
             {
                 Texture2D texture = ((DownloadHandlerTexture)uwr.downloadHandler).texture;
+                if (TVMode.IsTV && channelAnimation != null && channelAnimation.type == CHANNELTYPE.ICON && texture != null && Mathf.Max(texture.width, texture.height) > TvIconCap)
+                {
+                    nativeSize = new Vector2(texture.width, texture.height); // laid out at its original size, drawn from fewer pixels
+                    texture = TvIconSize(texture);
+                }
                 image = texture;
             }
         }
@@ -310,6 +349,8 @@ public class AnimatedImage : HasOptions
                 {
                     holder.rawImage.texture = image;
                     holder.rawImage.SetNativeSize();
+                    // a picture shrunk for the TV (TvIconSize) keeps the size its original pixels gave it
+                    if (nativeSize.x > 0f) holder.rawImage.rectTransform.sizeDelta = nativeSize;
                 }
             }
             else

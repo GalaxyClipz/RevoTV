@@ -35,7 +35,7 @@ public class AppController : MonoBehaviour
         #if UNITY_EDITOR
         isGithubBuild = !isGithubBuild;
         string packageName = GetPackageName();
-        string appName = isGithubBuild ? "Revo Launcher (APK)" : "Revo Launcher";
+        string appName = isGithubBuild ? "RevoTV (APK)" : "RevoTV";
         PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, packageName);
         PlayerSettings.productName = appName;
         Debug.Log($"The app is now: {PlayerSettings.productName} - {PlayerSettings.applicationIdentifier}");
@@ -60,7 +60,7 @@ public class AppController : MonoBehaviour
 
     public string GetPackageName()
     {
-        return "com.karuzohikari." + (isGithubBuild ? "wiiphonelauncher" : "wiiphone");
+        return "com.karuzohikari." + (isGithubBuild ? "wiiphonelauncher" : "bubbyfork");
     }
 
     [Button(ButtonSizes.Medium)]
@@ -168,7 +168,7 @@ public class AppController : MonoBehaviour
 
     private void RefreshDragThreshold()
     {
-        if (Application.isMobilePlatform)
+        if (Application.isMobilePlatform && !TVMode.IsTV)
         {
             int defaultValue = EventSystem.current.pixelDragThreshold;
             EventSystem.current.pixelDragThreshold =
@@ -180,6 +180,15 @@ public class AppController : MonoBehaviour
 
     public void RefreshFramerate()
     {
+        // (a 30 fps hold for Glass was tried 2026-11-07: once the main thread got faster it gave no better 1% lows than 60 Hz
+        // vsync, and with the GPU at ~34 ms per frame it could only add 66 ms frames, so it was taken out again)
+        if (TVMode.IsTV && !TVGlass.On && TVPerf.SlowChip)
+        {
+            // a steady 20 frames a second: the projector's chip could only manage ~24 by mixing 33 and 50 ms frames (uneven
+            // motion) while running flat out (heat). 20 is even and leaves it room to cool
+            QualitySettings.vSyncCount = 0; Application.targetFrameRate = 20; return;
+        }
+        if (TVMode.IsTV && QualitySettings.vSyncCount != 1) QualitySettings.vSyncCount = 1;
         Application.targetFrameRate = PREFS.TargetFramerate.GetInt();
     }
 
@@ -272,7 +281,17 @@ public class AppController : MonoBehaviour
 
     private void SetupVersionText()
     {
-        versionText.text = "Revo Launcher v" + Application.version;
+        if (TVMode.IsTV)
+        {
+            // the version label in the corner of Settings is gone on the TV, and so is its empty clickable box (the remote's light
+            // used to stop on it: a glowing outline around nothing)
+            versionText.text = "";
+            foreach (var g in versionText.GetComponentsInChildren<UnityEngine.UI.Graphic>(true)) g.raycastTarget = false;
+            foreach (var s in versionText.GetComponentsInChildren<UnityEngine.UI.Selectable>(true)) s.interactable = false;
+            versionText.gameObject.SetActive(false);
+            return;
+        }
+        versionText.text = "RevoTV v" + Application.version;
         if (isBeta)
         {
             versionText.text += "\n(b" + GetCurrentBundle() + ")";

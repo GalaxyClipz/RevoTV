@@ -33,6 +33,7 @@ public class AppHandler : ChannelHandler
         nameTagCanvas = nameTag.GetComponent<CanvasGroup>();
         nameTagText = nameTag.GetComponentInChildren<TextMeshProUGUI>();
         Resize(GridController._instance.GetChannelSizeMultiplier());
+        TVMove.AddButton(this); // TV: Edit / Move / Delete
     }
 
     public void EditChannel()
@@ -60,6 +61,14 @@ public class AppHandler : ChannelHandler
         }*/
     }
 
+    // TV remote: the Menu key opens this channel's Edit / Delete / Move buttons (the phone holds the tile instead)
+    public bool OptionsOpen => options != null && options.activeSelf;
+    public void ToggleOptions()
+    {
+        if (!OptionsOpen && (AppController.IsTransitioning() || PopupController.IsPopupOpen())) return;
+        SetOptions(!OptionsOpen);
+    }
+
     private void Update()
     {
         if (GridController._instance.IsLiftingChannel() || !AnimationController._instance.shouldTimeGlobal)
@@ -79,9 +88,9 @@ public class AppHandler : ChannelHandler
             return;
         }
         
-        if (Application.isMobilePlatform)
+        if (TVMode.UseTouch)
         {
-            if (Input.touchCount == 2)
+            if (RInput.touchCount == 2)
             {
                 Touch touch0 = Input.GetTouch(0);
                 Touch touch1 = Input.GetTouch(1);
@@ -95,7 +104,7 @@ public class AppHandler : ChannelHandler
         }
         else
         {
-            if (Input.GetMouseButton(0) && Input.GetMouseButton(1))
+            if (RInput.GetMouseButton(0) && RInput.GetMouseButton(1))
             {
                 if (ButtonContainsPosition(CameraController._instance.GetWorldMousePosition()))
                 {
@@ -108,11 +117,11 @@ public class AppHandler : ChannelHandler
     private bool IsClickingSomewhereElse()
     {
         Vector2 vec;
-        if (Application.isMobilePlatform && Input.touchCount > 0)
+        if (TVMode.UseTouch && RInput.touchCount > 0)
         {
             vec = CameraController._instance.GetWorldPosition(Input.GetTouch(0).position);
         }
-        else if (Input.GetMouseButton(0))
+        else if (RInput.GetMouseButton(0))
         {
             vec = CameraController._instance.GetWorldMousePosition();
         }
@@ -126,10 +135,11 @@ public class AppHandler : ChannelHandler
 
     public void ClickedChannel()
     {
-        if (Input.touchCount > 1)
+        if (RInput.touchCount > 1)
         {
             return;
         }
+        if (TVMove.TryDrop(channel.gridNumber, channel.position)) return; // TV: a channel being moved lands here
 
         blueBorder.alpha = 0f;
         HideTag(0f);
@@ -158,24 +168,28 @@ public class AppHandler : ChannelHandler
             return;
         }
         
-        StartCoroutine(_MouseEnter());
+        // one timer at a time: old ones used to survive a leave/re-enter and show the name early
+        if (enterRoutine != null) StopCoroutine(enterRoutine);
+        enterRoutine = StartCoroutine(_MouseEnter());
     }
+
+    private Coroutine enterRoutine;
 
     private IEnumerator _MouseEnter()
     {
         ShowBlueBorder();
         isBeingHovered = true;
-        AudioController.PlaySoundEffect(AudioLibrary._instance.HOVER_BUTTON);
+        if (!TVMode.IsTV || TVNav.UserActive) AudioController.PlaySoundEffect(AudioLibrary._instance.HOVER_BUTTON);
         
-        yield return new WaitForSeconds(0.4f);
+        yield return new WaitForSeconds(TVMode.IsTV ? 30f : 0.4f); // TV: the name only appears after the pointer has rested 30 seconds
         if (isBeingHovered)
         {
-            if (Application.isMobilePlatform && !PREFS.HasTriedHolding.GetBool())
+            if (TVMode.UseTouch && !PREFS.HasTriedHolding.GetBool())
             {
                 PREFS.HasTriedHolding.SetBool(true);
                 PopupController.ShowPopup("popup.reminderhold");
             }
-            AudioController.PlaySoundEffect(AudioLibrary._instance.HOVER_CHANNEL);
+            if (!TVMode.IsTV || TVNav.UserActive) AudioController.PlaySoundEffect(AudioLibrary._instance.HOVER_CHANNEL);
             ShowTag();
         }
     }
@@ -183,6 +197,7 @@ public class AppHandler : ChannelHandler
     public void MouseLeave()
     {
         isBeingHovered = false;
+        if (enterRoutine != null) { StopCoroutine(enterRoutine); enterRoutine = null; }
         HideBlueBorder();
 
         HideTag(0.12f);
