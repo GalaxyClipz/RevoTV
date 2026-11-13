@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- start-up spinner: faint full ring + a bright arc (the arc's group spins, see revotv_ring_anim) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp" android:height="100dp" android:viewportWidth="100" android:viewportHeight="100">
+    <path android:pathData="M50,8 a42,42 0 1,1 0,84 a42,42 0 1,1 0,-84" android:strokeColor="#3329A8E8" android:strokeWidth="14" />
+    <path android:pathData="M50,8 a42,42 0 1,1 0,84 a42,42 0 1,1 0,-84" android:strokeColor="#6629A8E8" android:strokeWidth="5.5" />
+    <group android:name="arc" android:pivotX="50" android:pivotY="50">
+        <path android:pathData="M50,8 A42,42 0 0,1 89.5,64.4" android:strokeColor="#FF22A6EC" android:strokeWidth="5.5" android:strokeLineCap="round" />
+        <path android:pathData="M27,15 A42,42 0 0,1 50,8" android:strokeColor="#6622A6EC" android:strokeWidth="5.5" android:strokeLineCap="round" />
+    </group>
+</vector>

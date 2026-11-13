@@ -91,12 +91,28 @@ public final class RevoTV {
         }
         // the common TV homes, in case one doesn't answer the HOME query
         for (String s : new String[]{"com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx",
-                "com.google.android.leanbacklauncher", "com.amazon.tv.launcher", "com.android.tv.launcher"}) out.add(s);
+                "com.google.android.leanbacklauncher", "com.amazon.tv.launcher", "com.amazon.firehomestarter", "com.android.tv.launcher"}) out.add(s);
         // the settings and setup screens are not homes
         out.remove("com.android.tv.settings");
         out.remove("com.android.settings");
         out.remove("com.google.android.tungsten.setupwraith");
         return out;
+    }
+
+    /** How Revo starts itself again (a new look, an update): as the home screen when it is the TV's home, so the next Home
+     *  press finds this same Revo (a plain app start put it in a second place; Home then made another Revo and the engine,
+     *  which can only run once, crashed back to the HDMI input). */
+    public static Intent restartIntent(Context c) {
+        try {
+            Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+            android.content.pm.ResolveInfo r = c.getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+            if (r != null && r.activityInfo != null && c.getPackageName().equals(r.activityInfo.packageName)) {
+                home.setPackage(c.getPackageName());
+                return home;
+            }
+        } catch (Throwable ignored) { }
+        // Revo itself (not the app list entry, which would come straight back here)
+        return new Intent(Intent.ACTION_MAIN).setComponent(new ComponentName(c.getPackageName(), "com.karuzohikari.revotv.RevoActivity"));
     }
 
     static Intent launchIntent(Context c) {
@@ -320,6 +336,17 @@ public final class RevoTV {
      * Asks Android to install an APK file (the person confirms on the system's own screen). Before that Android may
      * first ask to allow Revo to install apps: that opens its own settings page, and this returns "allow".
      */
+    /** Asks Android TV's Settings app to restart the TV (its own "Restart" does this). False when there is no such app. */
+    public static boolean restart(Activity a) {
+        try {
+            android.content.Intent i = new android.content.Intent("com.android.tv.settings.REBOOT_DEVICE");
+            i.setPackage("com.android.tv.settings");
+            i.addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND);
+            a.sendBroadcast(i);
+            return true;
+        } catch (Throwable t) { return false; }
+    }
+
     public static String installApk(Activity a, String path) {
         try {
             if (Build.VERSION.SDK_INT >= 26 && !a.getPackageManager().canRequestPackageInstalls()) {

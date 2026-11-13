@@ -661,21 +661,38 @@ public static class TV2026
 
     // Normal look: the date and the time (digits and AM/PM together) are centred on the screen, whatever the theme reload or a page change did to them.
     private static float centerTimer;
+    private static readonly List<UnityEngine.UI.Graphic> clockGraphics = new List<UnityEngine.UI.Graphic>();
+    private static readonly Vector3[] cornersTmp = new Vector3[4];
+    private static Vector3 lastGridPos, lastGridScale; private static int stillFrames;
+    private static bool centerWasHome; private static Grid centerGrid;
+    // a page change or coming back to the menu: centred at once (it was checked only every 0.3 s, so a page's own copy of the
+    // time showed off-centre for a moment and then hopped sideways: the "clock moves after switching pages / leaving a preview")
+    public static void CenterTimeNow() { centerTimer = 0f; CenterTime(); }
     private static void CenterTime()
     {
-        centerTimer -= Time.unscaledDeltaTime;
-        if (centerTimer > 0f) return;
-        centerTimer = 0.3f;
+        var gc0 = GridController._instance; var app0 = AppController._instance;
+        bool home0 = app0 != null && app0.mainView != null && app0.mainView.activeInHierarchy;
+        if ((home0 && !centerWasHome) || (gc0 != null && gc0.currentGrid != centerGrid)) centerTimer = 0f;
+        centerWasHome = home0; if (gc0 != null && !gc0.isChangingGrid) centerGrid = gc0.currentGrid;
+        // every frame on the menu: other code puts a page's time back to its old spot now and then (seen: 26 px, several times
+        // after leaving a channel preview), and a check every 0.3 s let that show before it was centred again
         var tc = ThemeController._instance;
         var gc = GridController._instance;
         var app = AppController._instance;
         if (tc == null || !tc.IsDefaultLookReady() || gc == null || gc.currentGrid == null || gc.isChangingGrid || app == null || app.gameCanvas == null) return;
         if (DOTween.IsTweening(gc.currentGrid.transform.parent) || !app.mainView.activeInHierarchy) return;
+        // not while a channel is open or the menu zooms in / out of one: it chased the moving clock (up to 463 px) and then had
+        // to put it back when the zoom stopped = the time hopping sideways after leaving any channel preview
+        var cc = ChannelController._instance;
+        if (AppController.IsTransitioning() || (cc != null && cc.currentChannel != null)) { stillFrames = 0; return; }
+        var gt = gc.currentGrid.transform; Vector3 gp = gt.position, gs = gt.lossyScale;
+        if ((gp - lastGridPos).sqrMagnitude > 1e-6f || (gs - lastGridScale).sqrMagnitude > 1e-8f) { lastGridPos = gp; lastGridScale = gs; stillFrames = 0; return; }
+        if (++stillFrames < 2) return;
         var canvas = app.gameCanvas.GetComponentInParent<Canvas>();
         Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
         RectTransformUtility.ScreenPointToWorldPointInRectangle(app.gameCanvas, new Vector2(Screen.width * 0.5f + Screen.width * TVTune.Get("timex", 0f), Screen.height * 0.5f), cam, out Vector3 mid);
         RectTransformUtility.ScreenPointToWorldPointInRectangle(app.gameCanvas, new Vector2(Screen.width * (0.5f + TVTune.Get("clockx", -0.012f)), Screen.height * 0.5f), cam, out Vector3 midClock);
-        var corners4 = new Vector3[4];
+        var corners4 = cornersTmp;
         // the date
         var dtext = TextController._instance != null && TextController._instance.date != null ? TextController._instance.date.dateText : null;
         if (dtext != null && dtext.gameObject.activeInHierarchy && dtext.rectTransform is RectTransform drt)
@@ -690,7 +707,8 @@ public static class TV2026
         {
             float lo = float.MaxValue, hi = float.MinValue;
             // the clock is drawn from digit pictures: its width is the span of the visible ones
-            foreach (var g in holder.GetComponentsInChildren<UnityEngine.UI.Graphic>(false))
+            holder.GetComponentsInChildren(false, clockGraphics);
+            foreach (var g in clockGraphics)
             {
                 if (!g.gameObject.activeInHierarchy || !g.enabled || g.color.a < 0.1f || g == (UnityEngine.UI.Graphic) dtext) continue;
                 g.rectTransform.GetWorldCorners(corners4);
@@ -703,6 +721,7 @@ public static class TV2026
                 var b = RectTransformUtility.WorldToScreenPoint(cam, new Vector3(midClock.x, holder.position.y, holder.position.z)).x;
                 if (Mathf.Abs(a - b) > 2f)
                 {
+                    Debug.Log("[CLOCK] centred by " + Mathf.RoundToInt(b - a) + " px");
                     var hrt = (RectTransform) holder; Vector2 a0 = hrt.anchoredPosition;
                     holder.position += new Vector3(midClock.x - cx, 0f, 0f);
                     // the layout pass puts the clock back to its remembered spot every tick: remember the new one
@@ -714,8 +733,36 @@ public static class TV2026
         }
     }
 
+    private static float clockLogX = float.NaN;
+    // the time never moves when a channel opens or closes: some placing code puts it ~3 units off while a channel is up and
+    // back afterwards (seen as a hop when leaving any preview). Its spot on the menu is held from just before every frame is
+    // drawn, from the channel opening until a moment after it closed.
+    private static bool holdHooked; private static float holdX = float.NaN, holdUntil;
+    private static void HoldClockSpot()
+    {
+        var gcl = GridController._instance; var app = AppController._instance;
+        var hc = gcl != null && gcl.currentGrid != null && gcl.currentGrid.clockTransform != null ? gcl.currentGrid.clockTransform.transform : null;
+        if (hc == null || app == null || TVGlass.On) { holdX = float.NaN; return; }
+        var cc = ChannelController._instance;
+        bool inChannel = AppController.IsTransitioning() || (cc != null && cc.currentChannel != null);
+        if (inChannel) holdUntil = Time.unscaledTime + 1f;
+        bool hold = inChannel || Time.unscaledTime < holdUntil;
+        if (!hold) { if (!gcl.isChangingGrid && app.mainView.activeInHierarchy) holdX = hc.position.x; return; }
+        if (float.IsNaN(holdX)) return;
+        var p = hc.position; if (Mathf.Abs(p.x - holdX) > 0.01f) hc.position = new Vector3(holdX, p.y, p.z);
+    }
     public static void Tick(bool on)
     {
+        if (!holdHooked) { holdHooked = true; Canvas.willRenderCanvases += HoldClockSpot; }
+        // check: every time the menu's clock moves sideways on screen, how far (to find what moves it)
+        var gcl = GridController._instance;
+        var hc = gcl != null && gcl.currentGrid != null && gcl.currentGrid.clockTransform != null ? gcl.currentGrid.clockTransform.transform : null;
+        if (hc != null && hc.gameObject.activeInHierarchy)
+        {
+            float sx = hc.position.x;
+            if (!float.IsNaN(clockLogX) && Mathf.Abs(sx - clockLogX) > 0.5f) Debug.Log("[CLOCKPOS] " + clockLogX.ToString("0.0") + " -> " + sx.ToString("0.0") + " f" + Time.frameCount);
+            clockLogX = sx;
+        }
         scan -= Time.unscaledDeltaTime;
         if (scan <= 0f) { scan = 1f; Find(); }
         if (backdrop != null && backdrop.gameObject.activeSelf != on) backdrop.gameObject.SetActive(on);

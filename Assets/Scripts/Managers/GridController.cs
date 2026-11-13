@@ -609,6 +609,10 @@ public class GridController : MonoBehaviour
         {
             // the pages' own bars settle over the next frames (themes put their clocks back): the picture stays until they have
             isChangingGrid = false;
+            // the new page's clock was asleep while its page was hidden (old minute, layout not rebuilt): set it now, under the
+            // still picture, so the bar's time doesn't hop sideways when the picture goes
+            if (currentGrid != null) foreach (var ck in currentGrid.GetComponentsInChildren<Clock>(true)) ck.UpdateHour(true);
+            if (!TVGlass.On) TV2026.CenterTimeNow(); // centred under the still picture too, before the page's own copy shows
             for (int f = 0; f < 4; f++) yield return null;
             slideParts += " | thaw at +" + Mathf.RoundToInt((Time.unscaledTime - slideStart) * 1000f) + " ms";
             long tp = TVFrameProbe.Begin();
@@ -936,7 +940,7 @@ public class GridController : MonoBehaviour
             return;
         }
 
-        if (isOverDelete)
+        if (isOverDelete && !TVTiles.BlockDelete(currentLiftingChannel))
         {
             ChannelController._instance.DeleteChannel(currentLiftingChannel);
         }

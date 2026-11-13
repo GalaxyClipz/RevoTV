@@ -387,7 +387,9 @@ public class AndroidLinker : MonoBehaviour
         const int kIntent_FLAG_ACTIVITY_NEW_TASK = 0x10000000;
 
         // todo should we use the launcher activity instead if the app is set as launcher? might not be needed since it's just an alias
-        var intent = packageManager.Call<AndroidJavaObject>("getLaunchIntentForPackage", Application.identifier);
+        AndroidJavaObject intent = null;
+        if (TVMode.IsTV) { try { using var rv = new AndroidJavaClass("com.karuzohikari.revotv.RevoTV"); intent = rv.CallStatic<AndroidJavaObject>("restartIntent", currentActivity); } catch (Exception) { } }
+        if (intent == null) intent = packageManager.Call<AndroidJavaObject>("getLaunchIntentForPackage", Application.identifier);
 
         intent.Call<AndroidJavaObject>("putExtra", "restarted", true);
         intent.Call<AndroidJavaObject>("setFlags", kIntent_FLAG_ACTIVITY_NEW_TASK | kIntent_FLAG_ACTIVITY_CLEAR_TASK);

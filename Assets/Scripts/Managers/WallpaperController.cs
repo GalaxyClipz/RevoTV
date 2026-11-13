@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -34,6 +34,48 @@ public class WallpaperController : MonoBehaviour
     private void Update()
     {
         currentWallpaper?.UpdateGif();
+        if (TVMode.IsTV) BlendGif();
+    }
+
+    // TV: a GIF background with few pictures a second (Wii U's: 10) looked choppy. The next picture is faded in over the
+    // current one as its turn comes, so the motion looks smooth (one extra layer, only for such GIFs)
+    private Graphic blendTarget; private RawImage blendLayer; private float blendLook; private bool? slowGif; private ThemeTexture blendFor;
+    private static bool Shows(Graphic g, Sprite s) => g is Image im ? im.sprite == s : g is RawImage ri && s != null && ri.texture == s.texture;
+    private void BlendGif()
+    {
+        var w = currentWallpaper;
+        if (w != blendFor) { blendFor = w; slowGif = null; blendTarget = null; }
+        if (w == null || !w.isGif || !w.finishedLoading || w.texture == null) { if (blendLayer != null) blendLayer.enabled = false; return; }
+        if (slowGif == null) slowGif = w.SlowGif;
+        if (slowGif == false) { if (blendLayer != null) blendLayer.enabled = false; return; }
+        if ((blendTarget == null || !blendTarget.isActiveAndEnabled || !Shows(blendTarget, w.texture)) && Time.unscaledTime > blendLook)
+        {
+            blendLook = Time.unscaledTime + 2f;
+            blendTarget = null;
+            foreach (var g in FindObjectsOfType<Graphic>())
+                if (g != blendLayer && g.isActiveAndEnabled && Shows(g, w.texture)) { blendTarget = g; break; }
+            if (blendTarget != null)
+            {
+                if (blendLayer == null)
+                {
+                    var go = new GameObject("Gif Blend", typeof(RectTransform), typeof(RawImage));
+                    blendLayer = go.GetComponent<RawImage>(); blendLayer.raycastTarget = false;
+                }
+                var rt = blendLayer.rectTransform;
+                rt.SetParent(blendTarget.transform, false);
+                rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero; rt.SetAsLastSibling();
+            }
+        }
+        if (blendTarget == null || blendLayer == null) return;
+        var next = w.NextGifFrame;
+        blendLayer.enabled = next != null && blendTarget.isActiveAndEnabled;
+        if (!blendLayer.enabled) return;
+        var tx = next.texture; var r = next.textureRect;
+        blendLayer.texture = tx;
+        var uv = new Rect(r.x / tx.width, r.y / tx.height, r.width / tx.width, r.height / tx.height);
+        if (blendTarget is RawImage tri) { var u0 = tri.uvRect; uv = new Rect(uv.x + u0.x * uv.width, uv.y + u0.y * uv.height, uv.width * u0.width, uv.height * u0.height); }
+        blendLayer.uvRect = uv;
+        var c = blendTarget.color; c.a *= w.GifBlend; blendLayer.color = c;
     }
 
     private void AssignCurrentWallpaper()

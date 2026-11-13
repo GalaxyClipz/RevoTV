@@ -245,7 +245,7 @@ public static class TVServerScreen
 
     internal static Sprite TabSprite() => tab != null ? tab : tab = Rounded(96, 40, new Color(0.97f, 0.97f, 0.98f), Color.clear, 0, true);
     internal static Sprite PillSprite() => pill != null ? pill : pill = Rounded(128, 56, new Color(0.96f, 0.97f, 0.98f), new Color(0.12f, 0.65f, 0.9f), 6, false);
-    internal static Sprite DotSprite() => dotSprite != null ? dotSprite : dotSprite = Rounded(32, 16, Color.white, Color.clear, 0, false, false);
+    internal static Sprite DotSprite() => dotSprite != null ? dotSprite : dotSprite = Rounded(128, 64, Color.white, Color.clear, 0, false, false);
 
     internal static Sprite Rounded(int n, int radius, Color fill, Color ring, int ringWidth, bool topOnly, bool sliced = true)
     {

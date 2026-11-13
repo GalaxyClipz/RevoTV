@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
@@ -52,6 +52,7 @@ public class ThemedTransform : ThemedElement
         {
             rectTransform.position = GetOriginalPosition(trans) + offset;
             usedCanvas = AppController._instance.gameCanvas.rect.size;
+            parentAt = rectTransform.parent != null ? rectTransform.parent.position : Vector3.zero;
         }
         rectTransform.localEulerAngles = originalRotation + rotation;
         rectTransform.localScale = scale;
@@ -61,12 +62,19 @@ public class ThemedTransform : ThemedElement
     // placed from the screen's corners: the screen's size settles after the first placing at start-up (the theme refresh a few
     // seconds later then moved the Settings / SD buttons = the bar "jumped"), so it is placed again as soon as the size changes
     private Vector2 usedCanvas;
+    // placed in screen terms, so it must follow when its parent moves: the bar was still sliding into place when the theme placed
+    // Wii U's wrench / SD buttons, and they sat off until a theme refresh 4 s later moved them (the bar "jumped")
+    private Vector3 parentAt;
     private void LateUpdate()
     {
-        if (usedCanvas == Vector2.zero || (Time.frameCount & 3) != 0) return;
+        if (usedCanvas == Vector2.zero) return;
+        // the clock's centred spot (TV2026) is kept too: without it the time sat at the theme's spot while the menu zoomed back
+        // out of a channel and hopped ~10 px sideways when the zoom stopped
+        if (rectTransform.parent != null && (rectTransform.parent.position - parentAt).sqrMagnitude > 0.0001f) { UpdatePosition(); TV2026.ReapplyClock(transform); return; }
+        if ((Time.frameCount & 3) != 0) return;
         var app = AppController._instance;
         if (app == null || app.gameCanvas == null) return;
-        if (app.gameCanvas.rect.size != usedCanvas) { usedCanvas = Vector2.zero; UpdatePosition(); }
+        if (app.gameCanvas.rect.size != usedCanvas) { usedCanvas = Vector2.zero; UpdatePosition(); TV2026.ReapplyClock(transform); }
     }
 
     private Vector3 GetOriginalPosition(ThemeTransform position)

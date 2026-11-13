@@ -1,4 +1,23 @@
-# RevoTV (Revo Launcher for Android TV, Google TV, Fire TV and projectors)
+<p align="center"><img src="docs/banner.png" alt="RevoTV" width="100%"></p>
+
+# RevoTV
+
+A Wii-inspired launcher reimagined for Android TV.
+
+RevoTV brings the Revo Launcher experience to the big screen, with TV-friendly navigation, familiar Wii-inspired channels, custom themes and more.
+
+**Watch the showcase below to see RevoTV in action.**
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=636VolCw1aA"><img src="https://img.youtube.com/vi/636VolCw1aA/maxresdefault.jpg" alt="RevoTV launch trailer" width="80%"></a>
+</p>
+
+<p align="center"><a href="https://github.com/GalaxyClipz/RevoTV/releases"><b>Download Latest Release</b></a> · <a href="https://github.com/GalaxyClipz/RevoTV/issues"><b>Report a Bug</b></a></p>
+
+Made with inspiration from the original Nintendo Wii and Revo Launcher. All original credits belong to their respective creators.
+
+---
+
 **Made by BubbyJr ([GalaxyClipz](https://github.com/GalaxyClipz)) and BubbyAi.** BubbyJr: idea, design, testing and direction.
 BubbyAi: built the TV version (remote navigation, home screen, Forecast/Photo/Disc channels, Channel Server, theme fixes, Glass 2026).
 
@@ -15,6 +34,9 @@ The newest `RevoTV.apk` is on the [Releases](https://github.com/GalaxyClipz/Revo
 
 Works on Android TV / Google TV / Fire TV (Fire OS 6+) and Android projectors: Android 7.1 or newer, ARM 32/64-bit.
 
+**Home button:** turn on *Make Home* in Preferences, then allow *Revo Make Home* in the TV's Accessibility settings. Fire TV hides
+that switch: Revo shows the two ADB commands that turn it on once.
+
 ## What the TV version adds
 - **Remote control everywhere:** D-pad moves a soft hover light, OK clicks, hold OK opens a tile's menu, Back goes back.
 - **Home screen mode:** opens with the Home button; HDMI input button in the bar (when the TV has HDMI inputs).
@@ -27,7 +49,7 @@ Works on Android TV / Google TV / Fire TV (Fire OS 6+) and Android projectors: A
   and the Glass 2026 look.
 - **Made for small TV chips:** lower frame rate on slow devices, idle cooling, lighter rendering.
 
-Built-in channels on a fresh install: Mii, Photo, Shop, Disc and Forecast. More details: [TV-FORK.md](TV-FORK.md).
+Built-in channels on a fresh install: Rii Maker, Photo, Shop, Disc and Forecast. More details: [TV-FORK.md](TV-FORK.md).
 Credits: [CREDITS.md](CREDITS.md).
 
 ---

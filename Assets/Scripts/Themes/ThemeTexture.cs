@@ -196,26 +196,46 @@ public class ThemeTexture
         gifFrames.Clear();
     }
     
+    private int gifShown; private float gifClock; private bool gifChecked;
+    // for blending a slow GIF (Wii U's background is 10 pictures a second): the picture after this one, and how far along we are
+    public Sprite NextGifFrame => isGif && gifFrames.Count > 1 ? gifFrames[(gifFrame + 1) % gifFrames.Count] : null;
+    public float GifBlend => isGif && gifFrameDelays.Count > 0 ? Mathf.Clamp01(gifDelay / Mathf.Max(0.02f, gifFrameDelays[Mathf.Min(gifFrame, gifFrameDelays.Count - 1)])) : 0f;
+    public bool SlowGif
+    {
+        get
+        {
+            if (!isGif || gifFrames.Count < 2 || gifFrameDelays.Count == 0) return false;
+            float total = 0f; foreach (var d in gifFrameDelays) total += Mathf.Max(0.02f, d);
+            return gifFrames.Count / total < 16f;
+        }
+    }
     public void UpdateGif()
     {
         if (isGif && finishedLoading)
         {
-            gifDelay += Time.deltaTime;
-            float targetDelay = gifFrameDelays[gifFrame];
-            if (gifDelay >= targetDelay)
+            if (gifFrames.Count == 0 || gifFrameDelays.Count == 0) return;
+            // keep the GIF on real time: when the menu draws fewer frames a second than the GIF has (a TV at 20), skip ahead
+            // instead of showing every frame late (it played at half speed and stuttered), and keep the leftover time
+            gifDelay += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
+            int start = gifFrame, guard = 0;
+            while (guard++ < 64)
             {
-                if (gifFrame >= gifFrames.Count - 1)
+                float targetDelay = Mathf.Max(0.02f, gifFrameDelays[Mathf.Min(gifFrame, gifFrameDelays.Count - 1)]);
+                if (gifDelay < targetDelay) break;
+                gifDelay -= targetDelay;
+                gifFrame = gifFrame >= gifFrames.Count - 1 ? 0 : gifFrame + 1;
+            }
+            if (gifFrame != start) { texture = gifFrames[gifFrame]; gifShown++; }
+            // once per GIF: how fast it really plays against how fast it should (TV log, for checking)
+            if (TVMode.IsTV && !gifChecked)
+            {
+                gifClock += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
+                if (gifClock > 8f)
                 {
-                    // Here we've reached the end of the GIF
-                    RefreshGif();
+                    gifChecked = true;
+                    float total = 0f; foreach (var d in gifFrameDelays) total += Mathf.Max(0.02f, d);
+                    Debug.Log("[GIF] " + imageFileName + ": " + (gifShown / gifClock).ToString("0.0") + " pictures/s shown, plays at real speed (" + (gifFrames.Count / Mathf.Max(0.01f, total)).ToString("0.0") + " frames/s in the file, menu at " + (1f / Mathf.Max(0.001f, Time.smoothDeltaTime)).ToString("0") + " fps)");
                 }
-                else
-                {
-                    // Here there's still more GIFs
-                    gifFrame++;
-                    texture = gifFrames[gifFrame];
-                }
-                gifDelay = 0;
             }
         }
     }

@@ -33,9 +33,29 @@ public class HomeService extends AccessibilityService {
     private int burst;
     private Set<String> homes;
 
+    static HomeService me;
+    /** The app in front right now ("" when the service is off). */
+    public static String front() { HomeService s = me; return s != null ? s.front : ""; }
+
     @Override
     protected void onServiceConnected() {
         homes = null;
+        me = this;
+    }
+
+    @Override
+    public boolean onUnbind(android.content.Intent intent) {
+        if (me == this) me = null;
+        return super.onUnbind(intent);
+    }
+
+    /** Revo's power menu: "sleep" turns the screen off (standby); "menu" opens the TV's own power menu (restart / power off),
+     *  the only way an app may restart or power off the TV. Returns false when the service isn't on. */
+    public static boolean power(String what) {
+        HomeService s = me;
+        if (s == null) return false;
+        if ("sleep".equals(what) && android.os.Build.VERSION.SDK_INT >= 28) return s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+        return s.performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
     }
 
     // ---- games: the emulator in front (Dolphin 32-bit fork or official Dolphin, any emulator package Revo knows)

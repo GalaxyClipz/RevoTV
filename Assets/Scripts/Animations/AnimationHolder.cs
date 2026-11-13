@@ -62,30 +62,24 @@ public class AnimationHolder : MonoBehaviour
     {
         if (animationInfo.isGif && !isFrozen)
         {
-            gifDelay += (Time.deltaTime * animationInfo.GetPlaybackSpeed());
-            float targetDelay = animationInfo.gifFrameDelays[gifFrame];
-            if (gifDelay >= targetDelay)
+            var fr = animationInfo.gifFrames; var dl = animationInfo.gifFrameDelays;
+            if (fr == null || fr.Count == 0 || dl == null || dl.Count == 0) return;
+            // real time: skip frames the screen had no time to show, keep the leftover (it played slow and uneven on a TV at 20 fps)
+            gifDelay += Mathf.Min(Time.deltaTime, 0.25f) * animationInfo.GetPlaybackSpeed();
+            int start = gifFrame, guard = 0;
+            while (guard++ < 64)
             {
-                if (gifFrame >= animationInfo.gifFrames.Count - 1)
+                float targetDelay = Mathf.Max(0.02f, dl[Mathf.Min(gifFrame, dl.Count - 1)]);
+                if (gifDelay < targetDelay) break;
+                gifDelay -= targetDelay;
+                if (gifFrame >= fr.Count - 1)
                 {
-                    // Here we've reached the end of the GIF
-                    if (animationInfo.freezeLastFrame)
-                    {
-                        isFrozen = true;
-                    }
-                    else
-                    {
-                        RefreshGif();
-                    }
+                    if (animationInfo.freezeLastFrame) { isFrozen = true; break; }
+                    gifFrame = 0;
                 }
-                else
-                {
-                    // Here there's still more GIFs
-                    gifFrame++;
-                    rawImage.texture = animationInfo.gifFrames[gifFrame];
-                }
-                gifDelay = 0;
+                else gifFrame++;
             }
+            if (gifFrame != start) rawImage.texture = fr[gifFrame];
         }
     }
 

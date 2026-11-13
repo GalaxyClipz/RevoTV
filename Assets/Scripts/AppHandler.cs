@@ -45,6 +45,7 @@ public class AppHandler : ChannelHandler
     public void RemoveChannel()
     {
         SetOptions(false);
+        if (TVTiles.BlockDelete(channel)) return;
         GridController._instance.DeleteChannel(this);
     }
 

@@ -498,10 +498,31 @@ public static class TVWeather
             return t;
         }
 
+        // a top-to-bottom shade (made once per pair of colours)
+        private static readonly Dictionary<string, Sprite> grads = new Dictionary<string, Sprite>();
+        private static Sprite Grad(Color top, Color bottom)
+        {
+            string key = top + "|" + bottom;
+            if (grads.TryGetValue(key, out var sp) && sp != null) return sp;
+            var t = new Texture2D(2, 64, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            for (int y = 0; y < 64; y++) { var c = Color.Lerp(bottom, top, y / 63f); t.SetPixel(0, y, c); t.SetPixel(1, y, c); }
+            t.Apply(false, true);
+            return grads[key] = Sprite.Create(t, new Rect(0, 0, 2, 64), new Vector2(0.5f, 0.5f));
+        }
+        private RectTransform GradBox(Transform parent, string name, float x0, float y0, float x1, float y1, Color top, Color bottom, float inset = 0f)
+        {
+            var rt = Box(parent, name, x0, y0, x1, y1, Color.white);
+            var img = rt.GetComponent<Image>(); img.sprite = Grad(top, bottom); img.type = Image.Type.Simple;
+            if (inset > 0f) { rt.offsetMin = new Vector2(inset, inset); rt.offsetMax = new Vector2(-inset, -inset); }
+            return rt;
+        }
+        private static void Outline(TextMeshProUGUI t, Color32 c, float w) { t.outlineWidth = w; t.outlineColor = c; }
+
         // a cell in the top or bottom bar: a Wii-grey panel that is also a button
         private void Cell(Transform parent, string label, float x0, float x1, float y0, float y1, UnityEngine.Events.UnityAction click, bool arrowUp, bool arrowDown)
         {
-            var rt = Box(parent, "Cell " + label, x0, y0, x1, y1, new Color(0.93f, 0.94f, 0.96f));
+            var rt = globe ? Box(parent, "Cell " + label, x0, y0, x1, y1, new Color(0.93f, 0.94f, 0.96f))
+                           : GradBox(parent, "Cell " + label, x0, y0, x1, y1, new Color(0.98f, 0.98f, 0.99f), new Color(0.8f, 0.82f, 0.85f));
             var img = rt.GetComponent<Image>();
             img.raycastTarget = true;
             var edge = Box(rt, "Edge", 0f, 0f, 0.004f, 1f, new Color(0.55f, 0.6f, 0.66f));
@@ -514,7 +535,7 @@ public static class TVWeather
                 b.onClick.AddListener(() => { lastCell = cellName; click(); });
             }
             string s = (arrowUp ? "▲  " : "") + (arrowDown ? "▼  " : "") + label;
-            var t = Label(rt, s, 0.04f, new Color(0.2f, 0.45f, 0.62f), TextAlignmentOptions.Center, 0f, 0f, 1f, 1f);
+            var t = Label(rt, s, 0.04f, globe ? new Color(0.2f, 0.45f, 0.62f) : new Color(0.12f, 0.13f, 0.15f), TextAlignmentOptions.Center, 0f, 0f, 1f, 1f);
             t.enableAutoSizing = true; t.fontSizeMin = h * 0.024f; t.fontSizeMax = h * 0.04f;
         }
 
@@ -560,6 +581,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 if (falling || snowing)
                 {
                     var dropsRoot = TVServerScreen.Child(body, "Drops");
+                    dropsRoot.gameObject.AddComponent<Canvas>(); // the falling rain / snow moves every frame: kept apart from the page's text
                     int n = snowing ? 36 : 46;
                     for (int i = 0; i < n; i++)
                     {
@@ -583,11 +605,27 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             string asOf = data != null ? "As of " + data.updated : "";
 
             // the banner: the page's name on the left, the city in a green pill on the right
-            Box(body, "Banner", 0f, 0.8f, 1f, 0.9f, new Color(0.02f, 0.1f, 0.4f, 0.92f));
-            Box(body, "BannerLine", 0f, 0.895f, 1f, 0.9f, new Color(0.3f, 0.85f, 0.4f));
-            Label(body, title.ToUpperInvariant(), 0.058f, white, TextAlignmentOptions.MidlineLeft, 0.03f, 0.8f, 0.5f, 0.9f).fontStyle = FontStyles.Bold;
-            var pill = Box(body, "City", 0.52f, 0.815f, 0.97f, 0.885f, new Color(0.22f, 0.72f, 0.3f), TVServerScreen.PillSprite());
-            Label(pill, city, 0.045f, white, TextAlignmentOptions.MidlineRight, 0.04f, 0f, 0.96f, 1f);
+            if (globe)
+            {
+                Box(body, "Banner", 0f, 0.8f, 1f, 0.9f, new Color(0.02f, 0.1f, 0.4f, 0.92f));
+                Box(body, "BannerLine", 0f, 0.895f, 1f, 0.9f, new Color(0.3f, 0.85f, 0.4f));
+                Label(body, title.ToUpperInvariant(), 0.058f, white, TextAlignmentOptions.MidlineLeft, 0.03f, 0.8f, 0.5f, 0.9f).fontStyle = FontStyles.Bold;
+                var pill = Box(body, "City", 0.52f, 0.815f, 0.97f, 0.885f, new Color(0.22f, 0.72f, 0.3f), TVServerScreen.PillSprite());
+                Label(pill, city, 0.045f, white, TextAlignmentOptions.MidlineRight, 0.04f, 0f, 0.96f, 1f);
+            }
+            else
+            {
+                // the forecast pages: a green banner, the city in a darker green pill with a light rim
+                GradBox(body, "Banner", 0f, 0.8f, 1f, 0.9f, new Color(0.2f, 0.72f, 0.22f), new Color(0.04f, 0.42f, 0.1f));
+                Box(body, "BannerLine", 0f, 0.8f, 1f, 0.804f, new Color(0.02f, 0.25f, 0.05f));
+                var tl = Label(body, title.ToUpperInvariant(), 0.056f, white, TextAlignmentOptions.MidlineLeft, 0.025f, 0.8f, 0.5f, 0.9f);
+                tl.fontStyle = FontStyles.Bold; Outline(tl, new Color32(0, 40, 10, 255), 0.22f);
+                var rim = Box(body, "CityRim", 0.52f, 0.812f, 0.975f, 0.888f, new Color(0.55f, 0.95f, 0.55f), TVServerScreen.PillSprite());
+                var pill = Box(rim, "City", 0f, 0f, 1f, 1f, new Color(0.08f, 0.5f, 0.14f), TVServerScreen.PillSprite());
+                pill.offsetMin = new Vector2(3f, 3f); pill.offsetMax = new Vector2(-3f, -3f);
+                var cl = Label(pill, city, 0.042f, white, TextAlignmentOptions.MidlineRight, 0.04f, 0f, 0.95f, 1f);
+                cl.enableAutoSizing = true; cl.fontSizeMin = h * 0.026f; cl.fontSizeMax = h * 0.042f;
+            }
 
             if (data == null)
             {
@@ -626,17 +664,26 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 {
                     var d = data.days[i];
                     float x0 = 0.03f + i * 0.1945f;
-                    var card = Box(body, "Day " + d.name, x0, 0.2f, x0 + 0.18f, 0.76f, new Color(1f, 1f, 1f, 0.16f));
-                    Label(card, d.name == "Tomorrow" ? "Tmrw" : d.name.Length > 3 && i > 1 ? d.name.Substring(0, 3) : d.name, 0.04f, white, TextAlignmentOptions.Center, 0f, 0.84f, 1f, 0.98f).fontStyle = FontStyles.Bold;
+                    // like the old channel's cards: a blue panel with a light edge, the day on a darker strip, big bold numbers
+                    var edge = Box(body, "Day " + d.name, x0, 0.2f, x0 + 0.18f, 0.76f, new Color(0.45f, 0.7f, 1f, 0.95f));
+                    var card = GradBox(edge, "Fill", 0f, 0f, 1f, 1f, new Color(0.13f, 0.4f, 0.9f), new Color(0.02f, 0.12f, 0.5f), Mathf.Max(2f, h * 0.003f));
+                    GradBox(card, "Head", 0f, 0.84f, 1f, 1f, new Color(0.05f, 0.22f, 0.66f), new Color(0.02f, 0.12f, 0.45f));
+                    Box(card, "HeadLine", 0f, 0.835f, 1f, 0.842f, new Color(0.45f, 0.7f, 1f, 0.9f));
+                    string dn = i == 0 ? "Today" : d.name == "Tomorrow" ? "Tmrw" : d.name.Length > 3 ? d.name.Substring(0, 3) : d.name;
+                    bool gold = i == 0 || dn.StartsWith("Sat") || dn.StartsWith("Sun");
+                    var nl = Label(card, dn.ToUpperInvariant(), 0.05f, gold ? yellow : white, TextAlignmentOptions.Center, 0f, 0.84f, 1f, 1f);
+                    nl.fontStyle = FontStyles.Bold; Outline(nl, new Color32(0, 15, 60, 255), 0.2f);
                     var di = new GameObject("DayIcon", typeof(RectTransform)).AddComponent<RawImage>();
                     di.transform.SetParent(card, false);
                     di.texture = Icon(d.code, true); di.raycastTarget = false;
                     var drt = di.rectTransform;
-                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.64f);
-                    drt.sizeDelta = new Vector2(h * 0.17f, h * 0.17f);
-                    Label(card, Deg(d.hi, c), 0.06f, yellow, TextAlignmentOptions.Center, 0f, 0.28f, 1f, 0.42f).fontStyle = FontStyles.Bold;
-                    Label(card, Deg(d.lo, c), 0.045f, new Color(0.7f, 0.85f, 1f), TextAlignmentOptions.Center, 0f, 0.16f, 1f, 0.28f);
-                    Label(card, d.rain + "% rain", 0.026f, white, TextAlignmentOptions.Center, 0f, 0.04f, 1f, 0.14f);
+                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.615f);
+                    drt.sizeDelta = new Vector2(h * 0.26f, h * 0.26f);
+                    var hl = Label(card, Deg(d.hi, c), 0.085f, yellow, TextAlignmentOptions.Center, 0f, 0.27f, 1f, 0.43f);
+                    hl.fontStyle = FontStyles.Bold; Outline(hl, new Color32(40, 25, 0, 255), 0.18f);
+                    var ll = Label(card, Deg(d.lo, c), 0.075f, new Color(0.62f, 0.85f, 1f), TextAlignmentOptions.Center, 0f, 0.12f, 1f, 0.27f);
+                    ll.fontStyle = FontStyles.Bold; Outline(ll, new Color32(0, 15, 60, 255), 0.18f);
+                    if (d.rain > 0) Label(card, d.rain + "% rain", 0.024f, new Color(0.85f, 0.92f, 1f), TextAlignmentOptions.Center, 0f, 0.025f, 1f, 0.11f);
                 }
             }
             else if (Kind(page) == 102)
@@ -667,6 +714,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 sun.transform.SetParent(body, false);
                 sun.texture = Icon(0, true); sun.raycastTarget = false;
                 iconRt = sun.rectTransform;
+                sun.gameObject.AddComponent<Canvas>(); // it bobs every frame
                 iconRt.anchorMin = iconRt.anchorMax = new Vector2(0.1f, 0.68f);
                 iconRt.sizeDelta = new Vector2(h * 0.2f, h * 0.2f);
             }
@@ -691,6 +739,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 icon.texture = Icon(code, Kind(page) < 0 ? data.day : true);
                 icon.raycastTarget = false;
                 iconRt = icon.rectTransform;
+                icon.gameObject.AddComponent<Canvas>(); // it bobs every frame
                 iconRt.anchorMin = iconRt.anchorMax = new Vector2(0.77f, 0.5f);
                 iconRt.sizeDelta = new Vector2(h * 0.52f, h * 0.52f);
                 Label(body, Deg(temp, c), 0.3f, yellow, TextAlignmentOptions.Center, 0.03f, 0.43f, 0.55f, 0.78f).fontStyle = FontStyles.Bold;
@@ -699,7 +748,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 bool wet = rain >= 40;
                 if (rain > 0) // no chance of rain: nothing said about it
                 Label(body, (Kind(page) < 0 ? "Chance of rain today:  " : "Chance of rain:  ") + rain + "%" + (wet ? "   Rain likely" : ""), 0.04f, wet ? new Color(0.7f, 0.9f, 1f) : new Color(1f, 1f, 1f, 0.9f), TextAlignmentOptions.MidlineLeft, 0.03f, 0.15f, 0.52f, 0.24f).fontStyle = wet ? FontStyles.Bold : FontStyles.Normal;
-                string wind = Kind(page) < 0 ? Compass(data.windDir) + " " + Spd(windMph, kmh) : "Wind up to " + Spd(windMph, kmh);
+                string wind = Kind(page) < 0 ? Spd(windMph, kmh) : "Wind up to " + Spd(windMph, kmh);
                 Label(body, wind, 0.045f, white, TextAlignmentOptions.MidlineRight, 0.5f, 0.15f, 0.97f, 0.24f);
             }
 
@@ -912,8 +961,19 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             StartCoroutine(ZoomAnim(to));
         }
 
+        // the whole globe in view: Up / Down turn it on over the poles and round to the far side (it shows upside down there, like a
+        // real globe; the names stay upright). Closer in, the map keeps north up and stops short of the poles.
+        private bool FreeSpin => globeZoom <= 2;
+        private float LatStep(float lat) => FreeSpin ? Mathf.Repeat(lat + 180f, 360f) - 180f : Mathf.Clamp(lat, -70f, 70f);
+        private void NorthUp()
+        {
+            if (Mathf.Abs(globeLat) <= 90f) { globeLat = Mathf.Clamp(globeLat, -70f, 70f); return; }
+            globeLat = Mathf.Clamp(Mathf.Sign(globeLat) * 180f - globeLat, -70f, 70f); globeLon += 180f; // the same spot, turned the right way up
+        }
+
         private IEnumerator ZoomAnim(int to)
         {
+            if (to > 2) NorthUp();
             spinning = true;
             HideLabels();
             float a = Mathf.Log(Zoom), b = Mathf.Log(GlobeZoom[to]), t0 = Time.unscaledTime, dur = 0.22f;
@@ -929,7 +989,26 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             globeDirty = true; Render(); FetchGlobe();
         }
 
-        private void OnDestroy() { if (globeTex != null) Destroy(globeTex); }
+        private void OnDestroy() { if (globeTex != null) Destroy(globeTex); ShowMenuBehind(true); }
+
+        // the Forecast covers the whole screen, but the menu under it (wallpaper, animated tiles, clock, the channel's preview) was
+        // still drawn every frame: the remote felt slow here only. It is switched off while the Forecast is up.
+        private Canvas behind;
+        private void ShowMenuBehind(bool on)
+        {
+            if (!on && behind == null)
+            {
+                var app = AppController._instance;
+                var c = app != null && app.gameCanvas != null ? app.gameCanvas.GetComponentInParent<Canvas>() : null;
+                var mine = GetComponentInParent<Canvas>();
+                if (c != null) c = c.rootCanvas;
+                if (c == null || (mine != null && mine.rootCanvas == c)) return; // same canvas: leave it alone
+                behind = c;
+            }
+            if (behind != null) behind.enabled = on;
+            if (on) behind = null;
+        }
+        private void Start() { ShowMenuBehind(false); }
 
         // GlobeData.bytes: three MapW x MapH byte fields from public-domain Natural Earth data.
         // land: 128 + 16 x signed distance to the coast in map pixels (land positive); countries / states: 16 x distance to the border line.
@@ -1343,7 +1422,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
         {
             spinning = true;
             if (body != null) { var cr = body.Find("Space/Cities"); if (cr != null) { cr.gameObject.SetActive(false); Destroy(cr.gameObject); } cr = body.Find("Space/Regions"); if (cr != null) { cr.gameObject.SetActive(false); Destroy(cr.gameObject); } cr = body.Find("Space/Sat"); if (cr != null) { cr.gameObject.SetActive(false); Destroy(cr.gameObject); } }
-            float lon0 = globeLon, lat0 = globeLat, lat1 = Mathf.Clamp(lat0 + dLat, -70f, 70f);
+            float lon0 = globeLon, lat0 = globeLat, lat1 = FreeSpin ? lat0 + dLat : Mathf.Clamp(lat0 + dLat, -70f, 70f);
             for (int i = 1; i <= 6; i++)
             {
                 float k = i / 6f; k = k * k * (3f - 2f * k);
@@ -1351,6 +1430,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 RenderSphere(true);
                 yield return null;
             }
+            globeLat = LatStep(globeLat);
             spinning = false;
             Render(); FetchGlobe();
         }
@@ -1810,7 +1890,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             // close up: about half a screen a second, building to just over one (the photo is fetched ahead and keeps up)
             speed = Mathf.Min(speed, Mathf.Lerp(0.45f, 1.1f, ramp) * 255f / Zoom);
             globeLon += dir.x * speed * Time.unscaledDeltaTime;
-            globeLat = Mathf.Clamp(globeLat + dir.y * speed * 0.7f * Time.unscaledDeltaTime, -70f, 70f);
+            globeLat = LatStep(globeLat + dir.y * speed * 0.7f * Time.unscaledDeltaTime);
             if (!SatCovers()) RenderSphere(true);
             PlaceSat();
             if (holdSlideLabels && body != null)
@@ -2098,7 +2178,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
     }
 
     private static readonly Dictionary<int, Texture2D> icons = new Dictionary<int, Texture2D>();
-    private const int S = 128;
+    private const int S = 256; // sharp at 1080 (128 looked blurry when the big icon was drawn 560 px wide)
 
     private static Texture2D Icon(int code, bool day)
     {
@@ -2110,25 +2190,81 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
         bool rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
         bool snow = (code >= 71 && code <= 77) || code == 85 || code == 86;
         bool storm = code >= 95;
-        if (clear || partly)
+        bool wet = rain || snow || storm;
+        // painted like a weather photo: lit, puffy clouds (dark rain clouds behind a white one), a glowing sun, streaks of rain
+        if (clear) { if (day) Sun(px, 0.5f, 0.5f, 0.2f); else Moon(px, 0.5f, 0.5f, 0.24f); }
+        else if (partly)
         {
-            if (day) Sun(px, partly ? 0.36f : 0.5f, partly ? 0.64f : 0.5f, partly ? 0.2f : 0.26f);
-            else Moon(px, partly ? 0.36f : 0.5f, partly ? 0.64f : 0.5f, partly ? 0.2f : 0.26f);
+            if (day) Sun(px, 0.34f, 0.62f, 0.15f); else Moon(px, 0.34f, 0.64f, 0.17f);
+            Puffs(px, 0.56f, 0.42f, 0.95f, new Color(1f, 1f, 1f), 3);
         }
-        if (!clear)
+        else if (wet)
         {
-            Color cloud = code == 3 || rain || storm ? new Color(0.82f, 0.85f, 0.9f) : Color.white;
-            Cloud(px, partly ? 0.56f : 0.5f, partly ? 0.4f : 0.5f, partly ? 0.8f : 1f, cloud);
+            var dark = storm ? new Color(0.42f, 0.44f, 0.5f) : new Color(0.6f, 0.62f, 0.68f);
+            Puffs(px, 0.4f, 0.6f, 0.95f, dark, 7);
+            if (!storm) Puffs(px, 0.62f, 0.54f, 0.72f, new Color(1f, 1f, 1f), 11);
         }
-        if (rain) for (int i = 0; i < 3; i++) Capsule(px, 0.34f + i * 0.16f, 0.22f, 0.28f + i * 0.16f, 0.06f, 0.025f, new Color(0.25f, 0.55f, 0.95f));
-        if (snow) for (int i = 0; i < 3; i++) Disc(px, 0.34f + i * 0.16f, 0.16f + (i % 2) * 0.07f, 0.035f, Color.white);
+        else if (fog) Puffs(px, 0.5f, 0.56f, 1f, new Color(0.86f, 0.88f, 0.92f), 5);
+        else { Puffs(px, 0.38f, 0.56f, 0.75f, new Color(0.82f, 0.84f, 0.9f), 13); Puffs(px, 0.6f, 0.48f, 0.85f, new Color(1f, 1f, 1f), 3); }
+        if (rain || storm)
+        {
+            var rnd = new System.Random(code);
+            for (int i = 0; i < 26; i++)
+            {
+                float rx = 0.24f + (float) rnd.NextDouble() * 0.58f, ry = 0.47f - (float) rnd.NextDouble() * 0.08f, len = 0.1f + (float) rnd.NextDouble() * 0.1f;
+                Capsule(px, rx, ry, rx - len * 0.35f, ry - len, 0.0045f, new Color(0.78f, 0.86f, 1f, 0.75f));
+            }
+        }
+        if (snow)
+        {
+            var rnd = new System.Random(code + 7);
+            for (int i = 0; i < 18; i++) Disc(px, 0.24f + (float) rnd.NextDouble() * 0.56f, 0.12f + (float) rnd.NextDouble() * 0.24f, 0.012f + (float) rnd.NextDouble() * 0.01f, new Color(1f, 1f, 1f, 0.95f));
+        }
         if (storm) Bolt(px);
-        if (fog) for (int i = 0; i < 3; i++) Capsule(px, 0.22f, 0.3f - i * 0.1f, 0.78f, 0.3f - i * 0.1f, 0.025f, new Color(1f, 1f, 1f, 0.9f));
+        if (fog) for (int i = 0; i < 3; i++) Capsule(px, 0.2f, 0.3f - i * 0.08f, 0.8f, 0.3f - i * 0.08f, 0.018f, new Color(0.92f, 0.94f, 0.97f, 0.85f));
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         tex.SetPixels(px);
-        tex.Apply();
+        tex.Apply(); // stays readable: the tile and preview pictures are drawn from it
         icons[key] = tex;
         return tex;
+    }
+
+    // a cloud made of round puffs, each lit from the upper left (a ball's shading), with a flatter, greyer bottom
+    private static void Puffs(Color[] px, float cx, float cy, float k, Color c, int seed)
+    {
+        var rnd = new System.Random(seed);
+        var list = new List<Vector3>();
+        // a row along the bottom, a taller hump on top, and a few random ones for a natural edge
+        for (int i = 0; i < 5; i++) list.Add(new Vector3(cx + (-0.24f + i * 0.12f) * k, cy - 0.06f * k, (0.09f + (float) rnd.NextDouble() * 0.03f) * k));
+        list.Add(new Vector3(cx - 0.1f * k, cy + 0.05f * k, 0.13f * k));
+        list.Add(new Vector3(cx + 0.06f * k, cy + 0.08f * k, 0.15f * k));
+        list.Add(new Vector3(cx + 0.18f * k, cy + 0.02f * k, 0.1f * k));
+        for (int i = 0; i < 12; i++) list.Add(new Vector3(cx + ((float) rnd.NextDouble() - 0.5f) * 0.46f * k, cy + ((float) rnd.NextDouble() - 0.3f) * 0.12f * k, (0.06f + (float) rnd.NextDouble() * 0.05f) * k));
+        list.Sort((p, q) => q.y.CompareTo(p.y)); // the top ones first, the lower ones in front
+        var L = new Vector3(-0.45f, 0.6f, 0.66f).normalized;
+        float bottom = (cy - 0.13f * k) * S;
+        foreach (var p in list)
+        {
+            float pr = p.z * S, pcx = p.x * S, pcy = p.y * S;
+            int x0 = Mathf.Max(0, (int) (pcx - pr - 2)), x1 = Mathf.Min(S - 1, (int) (pcx + pr + 2));
+            int y0 = Mathf.Max(0, (int) (pcy - pr - 2)), y1 = Mathf.Min(S - 1, (int) (pcy + pr + 2));
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                float dx = (x + 0.5f - pcx) / pr, dy = (y + 0.5f - pcy) / pr, d2 = dx * dx + dy * dy;
+                if (d2 > 1.1f) continue;
+                float a = Mathf.Clamp01((1f - Mathf.Sqrt(d2)) * 5f); // soft edges: puffs melt into each other
+                a *= Mathf.Clamp01((y - bottom) / 3f + 1f); // the flat underside
+                if (a <= 0f) continue;
+                var n = new Vector3(dx, dy, Mathf.Sqrt(Mathf.Max(0f, 1f - d2)));
+                float lit = 0.8f + 0.26f * Mathf.Max(0f, Vector3.Dot(n, L)) - 0.08f * (1f - n.z);
+                float under = Mathf.Clamp01((y - bottom) / (pr * 1.4f)); // greyer toward the bottom
+                var col = new Color(c.r * lit, c.g * lit, c.b * Mathf.Min(1.05f, lit + 0.05f), 1f);
+                col = Color.Lerp(col * new Color(0.78f, 0.8f, 0.88f, 1f), col, 0.35f + 0.65f * under);
+                col.r = Mathf.Min(1f, col.r); col.g = Mathf.Min(1f, col.g); col.b = Mathf.Min(1f, col.b); col.a = 1f;
+                Blend(px, x, y, col, a);
+            }
+        }
     }
 
     private static void Blend(Color[] px, int x, int y, Color c, float a)
@@ -2155,8 +2291,10 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
     {
         Vector2 a = new Vector2(ax * S, ay * S), b = new Vector2(bx * S, by * S);
         float pr = r * S;
-        for (int y = 0; y < S; y++)
-        for (int x = 0; x < S; x++)
+        int xa = Mathf.Max(0, (int) (Mathf.Min(a.x, b.x) - pr - 2)), xb = Mathf.Min(S - 1, (int) (Mathf.Max(a.x, b.x) + pr + 2));
+        int ya = Mathf.Max(0, (int) (Mathf.Min(a.y, b.y) - pr - 2)), yb = Mathf.Min(S - 1, (int) (Mathf.Max(a.y, b.y) + pr + 2));
+        for (int y = ya; y <= yb; y++)
+        for (int x = xa; x <= xb; x++)
         {
             var p = new Vector2(x + 0.5f, y + 0.5f);
             var ab = b - a;
@@ -2167,15 +2305,27 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
 
     private static void Sun(Color[] px, float cx, float cy, float r)
     {
-        var gold = new Color(1f, 0.8f, 0.2f);
-        for (int i = 0; i < 8; i++)
+        float pr = r * S, pcx = cx * S, pcy = cy * S, R = pr * 2.3f;
+        for (int y = Mathf.Max(0, (int) (pcy - R)); y <= Mathf.Min(S - 1, (int) (pcy + R)); y++)
+        for (int x = Mathf.Max(0, (int) (pcx - R)); x <= Mathf.Min(S - 1, (int) (pcx + R)); x++)
         {
-            float a = i * Mathf.PI / 4f;
-            var d = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
-            Capsule(px, cx + d.x * r * 1.35f, cy + d.y * r * 1.35f, cx + d.x * r * 1.8f, cy + d.y * r * 1.8f, 0.022f, gold);
+            float dx = x + 0.5f - pcx, dy = y + 0.5f - pcy, d = Mathf.Sqrt(dx * dx + dy * dy);
+            if (d > R) continue;
+            if (d > pr)
+            {
+                // the glow and its rays (16 soft spikes that fade out)
+                float ang = Mathf.Atan2(dy, dx), ray = Mathf.Pow(Mathf.Abs(Mathf.Cos(ang * 8f)), 6f);
+                float f = 1f - (d - pr) / (R - pr);
+                float glow = f * f * 0.55f + ray * f * 0.7f;
+                Blend(px, x, y, new Color(1f, 0.82f, 0.25f), Mathf.Clamp01(glow));
+            }
+            float a = Mathf.Clamp01(pr - d + 0.5f);
+            if (a > 0f)
+            {
+                float hl = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(pcx - pr * 0.3f, pcy + pr * 0.35f)) / (pr * 1.5f);
+                Blend(px, x, y, Color.Lerp(new Color(1f, 0.98f, 0.7f), new Color(1f, 0.62f, 0.1f), Mathf.Clamp01(hl)), a);
+            }
         }
-        Disc(px, cx, cy, r, new Color(1f, 0.72f, 0.12f));
-        Disc(px, cx, cy + r * 0.12f, r * 0.82f, gold);
     }
 
     private static void Moon(Color[] px, float cx, float cy, float r)
@@ -2193,15 +2343,26 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
 
     private static void Cloud(Color[] px, float cx, float cy, float k, Color c)
     {
-        var shade = c * 0.86f; shade.a = 1f;
-        Disc(px, cx - 0.17f * k, cy - 0.04f * k, 0.15f * k, shade);
-        Disc(px, cx + 0.2f * k, cy - 0.04f * k, 0.13f * k, shade);
-        Disc(px, cx - 0.02f * k, cy + 0.06f * k, 0.2f * k, shade);
-        Capsule(px, cx - 0.2f * k, cy - 0.11f * k, cx + 0.22f * k, cy - 0.11f * k, 0.09f * k, shade);
-        Disc(px, cx - 0.17f * k, cy - 0.02f * k, 0.15f * k, c);
-        Disc(px, cx + 0.2f * k, cy - 0.02f * k, 0.13f * k, c);
-        Disc(px, cx - 0.02f * k, cy + 0.08f * k, 0.2f * k, c);
-        Capsule(px, cx - 0.2f * k, cy - 0.08f * k, cx + 0.22f * k, cy - 0.08f * k, 0.09f * k, c);
+        // the shape first (on its own), then filled with a glossy top-to-bottom shade and a soft grey-blue edge
+        var m = new Color[S * S];
+        Disc(m, cx - 0.17f * k, cy - 0.02f * k, 0.15f * k, Color.white);
+        Disc(m, cx + 0.2f * k, cy - 0.02f * k, 0.13f * k, Color.white);
+        Disc(m, cx - 0.02f * k, cy + 0.08f * k, 0.2f * k, Color.white);
+        Capsule(m, cx - 0.2f * k, cy - 0.08f * k, cx + 0.22f * k, cy - 0.08f * k, 0.09f * k, Color.white);
+        float top = (cy + 0.28f * k) * S, bot = (cy - 0.17f * k) * S;
+        var edge = new Color(c.r * 0.55f, c.g * 0.62f, c.b * 0.78f, 1f);
+        for (int y = 1; y < S - 1; y++)
+        for (int x = 1; x < S - 1; x++)
+        {
+            float a = m[y * S + x].a; if (a <= 0f) continue;
+            float t = Mathf.Clamp01((y - bot) / Mathf.Max(1f, top - bot));
+            var col = Color.Lerp(new Color(c.r * 0.72f, c.g * 0.78f, c.b * 0.9f), Color.Lerp(c, Color.white, 0.6f), Mathf.Pow(t, 0.8f));
+            // near the outline (a neighbour outside the shape): darker, so it reads like the glossy icons in the old channel
+            float out4 = 4f - m[y * S + x - 1].a - m[y * S + x + 1].a - m[(y - 1) * S + x].a - m[(y + 1) * S + x].a;
+            float rim = Mathf.Clamp01(out4 * 0.5f);
+            for (int d = 2; d <= 3 && rim < 0.5f; d++) if (y - d >= 0 && m[(y - d) * S + x].a < 0.5f) rim = Mathf.Max(rim, 0.5f / d);
+            Blend(px, x, y, Color.Lerp(col, edge, rim), a);
+        }
     }
 
     private static void Bolt(Color[] px)
@@ -2255,14 +2416,15 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
         }
         var icon = Icon(2, true);
         var ip = icon.GetPixels();
-        int off = (hgt - S * 2) / 2;
-        for (int y = 0; y < S * 2; y++)
-        for (int x = 0; x < S * 2; x++)
+        const int N = 256; // drawn 256 px wide, whatever size the icons are made at
+        int off = (hgt - N) / 2;
+        for (int y = 0; y < N; y++)
+        for (int x = 0; x < N; x++)
         {
-            var c = ip[Mathf.Min(S - 1, y / 2) * S + Mathf.Min(S - 1, x / 2)];
+            var c = ip[Mathf.Min(S - 1, y * S / N) * S + Mathf.Min(S - 1, x * S / N)];
             if (c.a <= 0.01f) continue;
-            var d = tex.GetPixel(x + (w - S * 2) / 2, y + off);
-            tex.SetPixel(x + (w - S * 2) / 2, y + off, Color.Lerp(d, c, c.a));
+            var d = tex.GetPixel(x + (w - N) / 2, y + off);
+            tex.SetPixel(x + (w - N) / 2, y + off, Color.Lerp(d, c, c.a));
         }
         tex.Apply();
         iconPng = tex.EncodeToPNG();

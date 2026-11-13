@@ -483,7 +483,7 @@ public class PhotosActivity extends Activity {
             android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
             java.util.List<android.app.ActivityManager.RunningAppProcessInfo> procs = am != null ? am.getRunningAppProcesses() : null;
             if (procs != null) for (android.app.ActivityManager.RunningAppProcessInfo p : procs) if (getPackageName().equals(p.processName)) alive = true;
-            android.content.Intent i = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            android.content.Intent i = RevoTV.restartIntent(this); // as the home screen when Revo is the home (see restartIntent)
             if (i != null) {
                 i.putExtra("resume", true); // a restarted Revo goes straight to its menu, no "press A" page
                 i.putExtra("fromPhotos", true); // Revo takes the screen back if the TV's home screen pushes in (RevoActivity)

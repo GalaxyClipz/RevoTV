@@ -325,6 +325,10 @@ public class AnimatedImage : HasOptions
 
             Transform holderTransform = holder.transform;
             holderTransform.localPosition = initialLocalPosition;
+            // the Photo Channel tile's cork board stopped 112 units above the tile's bottom: on themes with taller tiles a white strip
+            // showed under it. Lowered so it always reaches the bottom (it's 1600 tall, plenty above)
+            if (imageName == "cork.jpg" && Mathf.Approximately(initialLocalPosition.y, 400f) && channelAnimation != null && channelAnimation.type == CHANNELTYPE.ICON)
+                holderTransform.localPosition = new Vector3(initialLocalPosition.x, 150f, initialLocalPosition.z);
             //holderTransform.localPosition += new Vector3(0, 0, -950f); // we push it forward 950z so it won't collide with UI
             holderTransform.localScale = initialLocalScale;
             holderTransform.localRotation = Quaternion.Euler(initialLocalRotation);

@@ -40,10 +40,11 @@ public class AudioController : MonoBehaviour
     private void Update()
     {
         // we update the looping point of animations!
-        if (!isMainAudioPaused && mainAudio.clip is not null && mainLoopPoint >= 0 && !mainAudio.isPlaying)
+        if (!isMainAudioPaused && mainStartPending == null && mainAudio.clip is not null && mainLoopPoint >= 0 && !mainAudio.isPlaying
+            && mainAudio.clip.loadState == AudioDataLoadState.Loaded)
         {
-            mainAudio.time = mainLoopPoint;
             mainAudio.Play();
+            mainAudio.time = Mathf.Clamp(mainLoopPoint, 0f, Mathf.Max(0f, mainAudio.clip.length - 0.05f));
         }
     }
 
@@ -68,6 +69,7 @@ public class AudioController : MonoBehaviour
     {
         if (AppController._instance is null || !AppController._instance.finishedLoading)
         {
+            if (!audioUpdateWaiting) { audioUpdateWaiting = true; StartCoroutine(_AudioUpdateOnceLoaded(showPopup)); }
             return;
         }
 
@@ -76,6 +78,15 @@ public class AudioController : MonoBehaviour
             StopCoroutine(audioReloadCoroutine);
         }
         audioReloadCoroutine = StartCoroutine(_TriggerAudioUpdate(showPopup ? 0 : 2, showPopup));
+    }
+
+    private bool audioUpdateWaiting;
+    private IEnumerator _AudioUpdateOnceLoaded(bool showPopup)
+    {
+        while (AppController._instance is null || !AppController._instance.finishedLoading) yield return new WaitForSecondsRealtime(0.5f);
+        audioUpdateWaiting = false;
+        Debug.Log("[Music] sound output changed during loading: restarting audio now");
+        TriggerAudioUpdate(showPopup);
     }
 
     private IEnumerator _TriggerAudioUpdate(int waitTime, bool showPopup)
@@ -92,6 +103,11 @@ public class AudioController : MonoBehaviour
         }
 
         RestartBackgroundAudio();
+        if (mainAudio.clip != null && !isMainAudioPaused && !mainAudio.isPlaying && mainLoopPoint >= 0)
+        {
+            Debug.Log("[Music] preview sound restarted after the sound output changed");
+            mainAudio.Play();
+        }
 
         if (showPopup)
         {
@@ -179,12 +195,28 @@ public class AudioController : MonoBehaviour
             _instance.mainLoopPoint = shouldLoop ? loopingPoint : -1;
             AudioClip clip = ThemeController.GetAudio(audioClip) ?? audioClip;
             _instance.mainAudio.clip = clip;
-            _instance.mainAudio.PlayDelayed(delay);
+            _instance.mainAudio.timeSamples = 0;
+            if (clip.loadState == AudioDataLoadState.Loaded) _instance.mainAudio.PlayDelayed(delay);
+            else _instance.mainStartPending = _instance.StartCoroutine(_instance.PlayMainWhenLoaded(clip, delay));
         }
+    }
+
+    private Coroutine mainStartPending;
+    private IEnumerator PlayMainWhenLoaded(AudioClip clip, float delay)
+    {
+        if (clip.loadState == AudioDataLoadState.Unloaded) clip.LoadAudioData();
+        float waited = 0f;
+        while (clip.loadState == AudioDataLoadState.Loading && waited < 8f) { waited += Time.unscaledDeltaTime; yield return null; }
+        mainStartPending = null;
+        if (mainAudio.clip != clip || clip.loadState != AudioDataLoadState.Loaded) yield break;
+        Debug.Log("[Music] preview sound ready after " + waited.ToString("0.00") + " s, starting from the beginning");
+        mainAudio.timeSamples = 0;
+        mainAudio.PlayDelayed(Mathf.Max(0f, delay - waited));
     }
 
     public static void StopMainAudio()
     {
+        if (_instance.mainStartPending != null) { _instance.StopCoroutine(_instance.mainStartPending); _instance.mainStartPending = null; }
         _instance.mainAudio.Stop();
         _instance.mainAudio.time = 0;
         _instance.mainAudio.loop = false;
@@ -358,6 +390,7 @@ public class AudioController : MonoBehaviour
                 if (!audioFiles.isNetworkError)
                 {
                     AudioClip clip = DownloadHandlerAudioClip.GetContent(audioFiles);
+                    if (clip == null) { Debug.Log("[Audio] this file isn't a sound Unity can read: " + newPath); action?.Invoke(null); yield break; }
                     if (clip.length == 0 && compressed && !stream)
                     {
                         // it didn't load (probably) so we load it again uncompressed

@@ -61,24 +61,81 @@ public class RevoActivity extends UnityPlayerActivity {
     private android.view.View splash;
     private void showSplash() {
         try {
+            // drawn live (no video file): smooth at the screen's own rate, loops forever, sized for a TV across the room
+            // the room and the words are still; the ring and the dots move on Android's render thread (AnimatedVectorDrawable),
+            // so they stay smooth even while the engine keeps the app's own thread busy (it looked like 5 frames a second)
+            // the activity is set up without hardware drawing (Unity's default): the cover's animations then ran on the busy app
+            // thread in software (choppy). The window gets it before it is first shown; the engine's own surface is unaffected
+            getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
             android.widget.FrameLayout f = new android.widget.FrameLayout(this);
-            f.setBackgroundColor(0xFFDCEBF7);
-            // animated loading screen (res/raw/revotv_loading.webp, 1280x720, ~16 fps so it stays light while the engine loads)
-            int id = getResources().getIdentifier("revotv_loading", "raw", getPackageName());
-            if (id != 0 && Build.VERSION.SDK_INT >= 28) {
-                android.widget.ImageView img = new android.widget.ImageView(this);
-                android.graphics.drawable.Drawable d = android.graphics.ImageDecoder.decodeDrawable(
-                        android.graphics.ImageDecoder.createSource(getResources(), id));
-                img.setImageDrawable(d);
-                img.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
-                f.addView(img, new android.widget.FrameLayout.LayoutParams(-1, -1));
-                if (d instanceof android.graphics.drawable.AnimatedImageDrawable) ((android.graphics.drawable.AnimatedImageDrawable) d).start();
-            }
+            f.addView(new LoadingView(this), new android.widget.FrameLayout.LayoutParams(-1, -1));
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            float u = Math.min(dm.heightPixels, dm.widthPixels * 9f / 16f);
+            int ring = (int) (u * 0.155f * 2f * 100f / 84f);
+            addSpin(f, "revotv_ring_anim", ring, ring, (int) (dm.heightPixels * 0.42f - ring / 2f));
+            int dw = (int) (u * 0.032f * 7f), dh = dw * 20 / 140;
+            addSpin(f, "revotv_dots_anim", dw, dh, (int) (dm.heightPixels * 0.765f - dh / 2f));
             addContentView(f, new android.view.ViewGroup.LayoutParams(-1, -1));
             splash = f;
             handler.postDelayed(RevoActivity::hideSplash, 120000); // never stays forever
         } catch (Throwable ignored) { }
     }
+    private void addSpin(android.widget.FrameLayout f, String res, int w, int h, int top) {
+        int id = getResources().getIdentifier(res, "drawable", getPackageName());
+        if (id == 0) return;
+        android.widget.ImageView v = new android.widget.ImageView(this);
+        android.graphics.drawable.Drawable d = getDrawable(id);
+        v.setImageDrawable(d);
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(w, h, android.view.Gravity.CENTER_HORIZONTAL | android.view.Gravity.TOP);
+        lp.topMargin = top;
+        f.addView(v, lp);
+        if (d instanceof android.graphics.drawable.Animatable) ((android.graphics.drawable.Animatable) d).start();
+    }
+
+    /** Revo's start-up screen: soft white-blue room, a glowing ring with a light that circles it, "Revo", and a wave of dots. */
+    private static final class LoadingView extends android.view.View {
+        private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final long t0 = SystemClock.uptimeMillis();
+        private android.graphics.Shader bg, glow;
+        private int bw, bh;
+        LoadingView(Context c) { super(c); }
+
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            int w = getWidth(), h = getHeight();
+            if (w == 0 || h == 0) return;
+            float t = (SystemClock.uptimeMillis() - t0) / 1000f;
+            float cx = w / 2f, cy = h * 0.42f, u = Math.min(h, w * 9f / 16f);
+            if (bw != w || bh != h) {
+                bw = w; bh = h;
+                bg = new android.graphics.LinearGradient(0, 0, 0, h, new int[] { 0xFFF4F9FE, 0xFFDDEBF7, 0xFFC4D9EE }, new float[] { 0f, 0.6f, 1f }, android.graphics.Shader.TileMode.CLAMP);
+                glow = new android.graphics.RadialGradient(cx, cy, u * 0.42f, new int[] { 0xCCFFFFFF, 0x44FFFFFF, 0x00FFFFFF }, new float[] { 0f, 0.55f, 1f }, android.graphics.Shader.TileMode.CLAMP);
+            }
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(0xFFFFFFFF); // a shader still uses the paint's alpha (the last dot's): the room came out grey
+            p.setShader(bg); c.drawRect(0, 0, w, h, p);
+            // soft floor and side walls, like the console menus' rooms
+            p.setShader(null);
+            p.setColor(0x22FFFFFF); c.drawOval(cx - w * 0.42f, h * 0.70f, cx + w * 0.42f, h * 0.98f, p);
+            p.setStyle(android.graphics.Paint.Style.STROKE); p.setStrokeWidth(u * 0.035f); p.setColor(0x1C3C8FD6);
+            c.drawArc(-w * 0.18f, -h * 0.1f, w * 0.16f, h * 1.1f, -70, 140, false, p);
+            c.drawArc(w * 0.84f, -h * 0.1f, w * 1.18f, h * 1.1f, 110, 140, false, p);
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(0xFFFFFFFF);
+            p.setShader(glow); c.drawCircle(cx, cy, u * 0.42f, p); p.setShader(null);
+
+            // words
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setTextAlign(android.graphics.Paint.Align.CENTER);
+            p.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD));
+            p.setTextSize(u * 0.085f); p.setColor(0xFF6B7584);
+            c.drawText("Revo", cx, cy + u * 0.03f, p);
+            p.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
+            p.setTextSize(u * 0.038f); p.setColor(0xFF5F6D80);
+            c.drawText("Loading...", cx, h * 0.70f, p);
+
+        }
+    }
+
     public static void hideSplash() {
         final RevoActivity a = me;
         if (a == null) return;
@@ -106,9 +163,30 @@ public class RevoActivity extends UnityPlayerActivity {
         }
     }
 
+    // Home pressed while the TV showed an HDMI input: Revo came up, then the TV's input player put the HDMI picture straight back
+    // over it (seen while Revo was still loading). Right after Revo comes to the front, if the HDMI player takes over without the
+    // person touching Revo, Revo takes the screen back (twice at most).
+    private long frontAt, touchedAt; private int hdmiReclaims;
+    @Override
+    public void onUserInteraction() { super.onUserInteraction(); touchedAt = SystemClock.elapsedRealtime(); }
+
     @Override
     protected void onPause() {
         super.onPause();
+        final long now = SystemClock.elapsedRealtime();
+        if (now - frontAt < 15000 && now - touchedAt > 2500 && hdmiReclaims < 2 && !isFinishing()) {
+            handler.postDelayed(() -> {
+                String f = HomeService.front();
+                if (f == null || !f.contains("inputplayer") && !f.contains("tvinput") && !f.contains("passthrough")) return;
+                hdmiReclaims++;
+                try {
+                    Intent again = new Intent(this, RevoActivity.class);
+                    again.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    again.putExtra("resume", true);
+                    startActivity(again);
+                } catch (Exception ignored) { }
+            }, 700);
+        }
         if (SystemClock.elapsedRealtime() - backFromPhotosAt < RECLAIM_MS && !isFinishing() && reclaims < 3) {
             reclaims++;
             // the TV's own home screen pushed in right after Photos: come straight back to the front
@@ -179,6 +257,9 @@ public class RevoActivity extends UnityPlayerActivity {
     protected void onResume() {
         super.onResume();
         resumedAt = SystemClock.uptimeMillis();
+        long nowE = SystemClock.elapsedRealtime();
+        if (nowE - frontAt > 20000) hdmiReclaims = 0;
+        frontAt = nowE;
     }
 
     // Revo is the TV's home screen: Back never sends it away (Android's default for an unused Back is to put the app behind the

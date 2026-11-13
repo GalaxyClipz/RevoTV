@@ -24,7 +24,7 @@ public static class TVThemes
     private static void AskWallpaper(Theme theme, bool inHub)
     {
         if (theme.wallpaper != null && (!theme.wallpaper.isVideo || TVStill.Get(theme.wallpaper, theme.GetImportedFileName()) != null))
-            PopupController.ShowPopup("popup.usewallpaper", () => Apply(theme, true, inHub), () => Apply(theme, false, inHub));
+            PopupController.ShowPopup("popup.usewallpaper", () => Apply(theme, true, inHub), PopupController.ClosePopup); // No = keep the current look (nothing changes)
         else
             Apply(theme, false, inHub);
     }

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/revotv_ring">
+    <target android:name="arc" android:animation="@animator/revotv_spin" />
+</animated-vector>

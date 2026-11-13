@@ -28,10 +28,15 @@ public class ThemeAudio
         if (TVMode.IsTV && !string.IsNullOrEmpty(filePath) && File.Exists(filePath) && new FileInfo(filePath).Length > 1200 * 1024)
         {
             // the theme opens without it; the song is streamed from the file a little later (never decoded whole into memory)
-            Debug.Log("[Theme] long audio file on TV, streaming it later: " + audioFileName);
-            finishedLoading = true;
+            // streamed straight away (opening a stream is light): the menu starts with the theme's own song, instead of Revo's
+            // playing for a moment and then cutting over to it (heard as a blip at start-up)
+            Debug.Log("[Theme] long audio file on TV, streamed: " + audioFileName);
             string p = filePath;
-            SyncContext.RunOnUnityThread(() => AudioController._instance.StartCoroutine(LoadLater(p)));
+            SyncContext.RunOnUnityThread(() => AudioController.LoadAudio(p, audio =>
+            {
+                if (audio != null) { audioClip = audio; audioClip.name = audioClipName; Debug.Log("[Theme] streaming audio ready: " + audioFileName); }
+                finishedLoading = true;
+            }, true, true));
             return;
         }
         if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))

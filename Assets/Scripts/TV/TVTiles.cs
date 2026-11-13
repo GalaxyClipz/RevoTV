@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -231,11 +231,28 @@ public static class TVTiles
 
     // ---------------------------------------------------------------- remove / rename
 
+    // RevoTV's own channels (Disc, Mii/Rii Maker, Photo, Shop, Forecast) can be moved but never removed
+    public static bool IsBuiltIn(Channel c)
+    {
+        if (c == null) return false;
+        if (c.overrideTag == "Rii Maker") return true;
+        string p = c.info != null ? c.info.packageName : null;
+        return p == "revo.disc" || p == "revo.gallery" || p == "revo.market" || p == TVWeather.Package;
+    }
+    public static bool BlockDelete(Channel c)
+    {
+        if (!TVMode.IsTV || !IsBuiltIn(c)) return false;
+        Debug.Log("[Tiles] built-in channel kept: " + c.GetFileName());
+        PopupController.ShowPopup("tv.builtin.keep", PopupController.ClosePopup);
+        return true;
+    }
+
     public static string Remove(int grid, int pos)
     {
         if (Busy()) return "The TV is busy, try again in a moment";
         var c = At(grid, pos);
         if (c == null) return "That slot is already empty";
+        if (IsBuiltIn(c)) return "This is one of RevoTV's built-in channels: it can be moved, not removed";
         if (c.appHandler != null) GridController._instance.DeleteChannel(c.appHandler);
         else ChannelController._instance.DeleteChannel(c);
         Debug.Log("[Tiles] removed page " + grid + " slot " + pos);
@@ -520,12 +537,115 @@ public static class TVTiles
     }
 
     // a still picture (first frame of a GIF) of what a tile shows, for the phone page; null when it has none
+    // the tile as the TV draws it: its layers in order, the channel's picture cut to the shape of the tile's mask (Mask clips by the
+    // mask picture's see-through edges), hover / glow / text left out
+    private static byte[] LiveTile(RectTransform tile)
+    {
+        var tr = tile.rect;
+        if (tr.width < 4f || tr.height < 4f) return null;
+        const int H = 200; int W = Mathf.Clamp(Mathf.RoundToInt(H * tr.width / tr.height), 60, 480);
+        var mk = tile.GetComponentInChildren<UnityEngine.UI.Mask>(true);
+        var maskG = mk != null ? mk.graphic : null;
+        var prev = RenderTexture.active;
+        RenderTexture rt = null;
+        Texture2D content = null, shape = null, outTex = null;
+        try
+        {
+            var all = tile.GetComponentsInChildren<UnityEngine.UI.Graphic>(true);
+            int drawn = 0;
+            // 1) the masked picture alone, 2) the mask's shape alone, then cut 1 by 2 on the CPU (a 200 px picture: quick)
+            if (mk != null)
+            {
+                content = Pass(all, tile, tr, W, H, g => g != maskG && g.transform.IsChildOf(mk.transform), false, ref drawn);
+                int none = 0;
+                shape = Pass(all, tile, tr, W, H, g => g == maskG, true, ref none);
+                if (content != null && shape != null)
+                {
+                    var c = content.GetPixels32(); var m = shape.GetPixels32();
+                    for (int i = 0; i < c.Length; i++) c[i].a = (byte) (c[i].a * m[i].a / 255);
+                    content.SetPixels32(c); content.Apply();
+                }
+            }
+            // 3) the tile: mask picture (when shown), the cut picture, then everything outside the mask (frame, shine)
+            rt = RenderTexture.GetTemporary(W, H, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            RenderTexture.active = rt;
+            GL.Clear(true, true, new Color(0, 0, 0, 0));
+            GL.PushMatrix(); GL.LoadPixelMatrix(0, W, H, 0);
+            if (mk != null && mk.showMaskGraphic && maskG != null && Draw(maskG, tile, tr, W, H, false)) drawn++;
+            if (content != null) Graphics.DrawTexture(new Rect(0, 0, W, H), content);
+            foreach (var g in all) if (g != maskG && (mk == null || !g.transform.IsChildOf(mk.transform)) && Draw(g, tile, tr, W, H, false)) drawn++;
+            GL.PopMatrix();
+            if (drawn == 0) return null;
+            outTex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+            outTex.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+            outTex.Apply();
+            return outTex.EncodeToPNG();
+        }
+        catch (Exception e) { Debug.LogWarning("[Tiles] live tile picture: " + e.Message); return null; }
+        finally
+        {
+            RenderTexture.active = prev;
+            if (rt != null) RenderTexture.ReleaseTemporary(rt);
+            if (content != null) UnityEngine.Object.Destroy(content);
+            if (shape != null) UnityEngine.Object.Destroy(shape);
+            if (outTex != null) UnityEngine.Object.Destroy(outTex);
+        }
+    }
+
+    private static Texture2D Pass(UnityEngine.UI.Graphic[] all, RectTransform tile, Rect tr, int W, int H, Func<UnityEngine.UI.Graphic, bool> which, bool white, ref int drawn)
+    {
+        var rt = RenderTexture.GetTemporary(W, H, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+        RenderTexture.active = rt;
+        GL.Clear(true, true, new Color(0, 0, 0, 0));
+        GL.PushMatrix(); GL.LoadPixelMatrix(0, W, H, 0);
+        int n = 0;
+        foreach (var g in all) if (which(g) && Draw(g, tile, tr, W, H, white)) n++;
+        GL.PopMatrix();
+        Texture2D t = null;
+        if (n > 0) { t = new Texture2D(W, H, TextureFormat.RGBA32, false); t.ReadPixels(new Rect(0, 0, W, H), 0, 0); t.Apply(); }
+        RenderTexture.active = null;
+        RenderTexture.ReleaseTemporary(rt);
+        drawn += n;
+        return t;
+    }
+
+    private static readonly Vector3[] tileCorners = new Vector3[4];
+    private static bool Draw(UnityEngine.UI.Graphic g, RectTransform tile, Rect tr, int W, int H, bool white)
+    {
+        if (!g.enabled || g is TMPro.TMP_Text || g is UnityEngine.UI.Text || (!white && g.color.a < 0.05f)) return false;
+        float inh = 1f;
+        foreach (var cg in g.GetComponentsInParent<CanvasGroup>(true)) { inh *= cg.alpha; if (cg.ignoreParentGroups) break; }
+        if (!white && inh < 0.05f) return false;
+        for (var t = g.transform; t != null && t != tile.parent; t = t.parent) if (!t.gameObject.activeSelf) return false;
+        string n = g.gameObject.name.ToLowerInvariant();
+        if (n.Contains("hover") || n.Contains("glow") || n.Contains("shadow") || n.Contains("rim")) return false;
+        Texture tex = null; Rect uv = new Rect(0, 0, 1, 1);
+        if (g is UnityEngine.UI.RawImage ri) { tex = ri.texture; uv = ri.uvRect; }
+        else if (g is UnityEngine.UI.Image im && im.sprite != null)
+        {
+            tex = im.sprite.texture; var sr = im.sprite.textureRect;
+            uv = new Rect(sr.x / tex.width, sr.y / tex.height, sr.width / tex.width, sr.height / tex.height);
+        }
+        if (tex == null) return false;
+        ((RectTransform) g.transform).GetWorldCorners(tileCorners);
+        Vector3 a = tile.InverseTransformPoint(tileCorners[0]), b = tile.InverseTransformPoint(tileCorners[2]);
+        float x0 = (a.x - tr.xMin) / tr.width * W, x1 = (b.x - tr.xMin) / tr.width * W;
+        float y0 = (1f - (b.y - tr.yMin) / tr.height) * H, y1 = (1f - (a.y - tr.yMin) / tr.height) * H;
+        if (x1 - x0 < 1f || y1 - y0 < 1f) return false;
+        var col = white ? Color.white : g.color; if (!white) col.a *= inh;
+        Graphics.DrawTexture(new Rect(x0, y0, x1 - x0, y1 - y0), tex, uv, 0, 0, 0, 0, col);
+        return true;
+    }
+
     public static byte[] Thumbnail(int grid, int pos)
     {
         var c = At(grid, pos);
         if (c == null) return null;
         try
         {
+            // the tile exactly as the TV draws it (its picture layers, cut to the tile), so the phone shows what the TV shows
+            var live = c.appHandler != null ? LiveTile((RectTransform) c.appHandler.transform) : null;
+            if (live != null) return live;
             if (!string.IsNullOrEmpty(c.iconName) && c.iconName.Contains("_" + CustomTag + "_") && c.iconAnimation != null)
             {
                 foreach (var img in c.iconAnimation.images)

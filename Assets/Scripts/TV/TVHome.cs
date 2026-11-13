@@ -12,6 +12,8 @@ public static class TVHome
     private const string Helper = "com.karuzohikari.revotv.RevoTV";
     private static bool waitingForSwitch;
 
+    private static bool IsFire() => SystemInfo.deviceModel != null && SystemInfo.deviceModel.StartsWith("Amazon", System.StringComparison.OrdinalIgnoreCase);
+
     public static void Apply(bool on)
     {
         if (!TVMode.IsTV || !Application.isMobilePlatform) return;
@@ -28,6 +30,8 @@ public static class TVHome
                 PopupController.ShowPopup("popup.tvhome.done");
                 return;
             }
+            // Fire TV: its Accessibility screen doesn't list other apps' services, so the steps to turn it on once over ADB
+            if (IsFire()) { PopupController.ShowPopup("popup.tvhome.fire"); return; }
             // one switch only the person can turn on: show where it is, then open that screen
             PopupController.ShowPopup("popup.tvhome.allow", () =>
             {
@@ -56,7 +60,7 @@ public static class TVHome
         {
             using var helper = new AndroidJavaClass(Helper);
             bool allowed = helper.CallStatic<bool>("isHomeServiceAllowed", AndroidLinker.currentActivity);
-            PopupController.ShowPopup(allowed ? "popup.tvhome.done" : "popup.tvhome.notyet");
+            PopupController.ShowPopup(allowed ? "popup.tvhome.done" : IsFire() ? "popup.tvhome.fire" : "popup.tvhome.notyet");
         }
         catch (System.Exception e)
         {

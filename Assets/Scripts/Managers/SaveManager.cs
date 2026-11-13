@@ -213,12 +213,17 @@ public class SaveManager : MonoBehaviour
         }
     }
 
+    private float stuckHold;
     private void Update()
     {
         if (isLoadingApps)
         {
-            if (Input.GetKey(KeyCode.Menu) || Input.GetKey(KeyCode.Escape))
+            // TV: a remote's Back pressed during start-up opened Android's "Default home app" page; only a 5-second hold does it there
+            bool held = Input.GetKey(KeyCode.Menu) || Input.GetKey(KeyCode.Escape);
+            stuckHold = held ? stuckHold + Time.unscaledDeltaTime : 0f;
+            if (held && (!TVMode.IsTV || stuckHold > 5f))
             {
+                stuckHold = 0f;
                 // Here we close the app and redirect to the launcher settings, in case they're stuck loading the apps.
                 AndroidLinker._instance.OpenPhoneLauncherSettings();
             }
@@ -388,11 +393,21 @@ public class SaveManager : MonoBehaviour
                 Debug.Log($"Saving channel from {originalPath} to {destinationPath}!");
                 UnityEngine.Networking.UnityWebRequest www = UnityEngine.Networking.UnityWebRequest.Get(originalPath);
                 www.SendWebRequest();
-                while (!www.downloadHandler.isDone)
+                // the request itself finishing (not its data): a missing file never fills the data, and waiting on that hung
+                // a brand new install on a blank screen forever (the fork's removed YouTube channel was still listed)
+                var waitStart = DateTime.UtcNow;
+                while (!www.isDone && (DateTime.UtcNow - waitStart).TotalSeconds < 20)
                 {
                 }
 
+                if (!www.isDone || www.result != UnityEngine.Networking.UnityWebRequest.Result.Success || www.downloadHandler.data == null)
+                {
+                    Debug.Log($"[Copy] skipped {originalPath}: {(www.isDone ? www.error : "timed out")}");
+                    www.Dispose();
+                    return;
+                }
                 File.WriteAllBytes(destinationPath, www.downloadHandler.data);
+                www.Dispose();
                 return;
             }
             #endif

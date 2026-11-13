@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -446,6 +446,16 @@ public class TVNav : MonoBehaviour
         }
 
         int next = Pick(cands, cur, dir);
+        if (SearchJump(cands, cur, next, dir)) return;
+        // home: Up from the top row reaches the power button in the corner
+        if (dir.y > 0 && (next < 0 || !IsTile(cands[next].go)) && IsTile(cands[cur].go) && TVPower.ButtonGo != null)
+        {
+            var prt = (RectTransform) TVPower.ButtonGo.transform;
+            var pc = new Candidate { go = TVPower.ButtonGo };
+            pc.screen = ScreenRect(prt, corners); pc.center = pc.screen.center; pc.press = pc.center;
+            SetFocus(pc);
+            return;
+        }
         if (TryPage(cands, cur, next, dir)) return;
 
         // inside a scrolling list, scroll first: don't leap out to a button that happens to be below/above the list
@@ -486,6 +496,32 @@ public class TVNav : MonoBehaviour
             next = Pick(cands, cur, dir);
             if (next >= 0) SetFocus(cands[next]);
         }
+    }
+
+    // Settings lists (Channel creation's app list...): the round search button sits alone in the top corner, so Up from the top
+    // row (or Right with nothing further right) never reached it. Now those presses land on it.
+    private bool SearchJump(List<Candidate> cands, int cur, int next, Vector2 dir)
+    {
+        var sc = SettingsController._instance;
+        if (sc == null || sc.searchIcon == null || !sc.searchIcon.activeInHierarchy) return false;
+        GameObject sb = ExecuteEvents.GetEventHandler<IPointerClickHandler>(sc.searchIcon);
+        if (sb == null) { var b = sc.searchIcon.GetComponentInChildren<Button>(); if (b != null) sb = b.gameObject; }
+        if (sb == null || focus == sb || (focus != null && focus.transform.IsChildOf(sb.transform))) return false;
+        bool up = dir.y > 0, right = dir.x > 0;
+        if (!up && !right) return false;
+        if (right && next >= 0) return false;
+        if (up)
+        {
+            float y = cands[cur].center.y + 10f;
+            foreach (var k in cands) if (k.center.y > y && k.go != sb && !k.go.transform.IsChildOf(sb.transform) && k.go.GetComponentInParent<ScrollRect>() != null) return false;
+            if (next >= 0 && cands[next].go.GetComponentInParent<ScrollRect>() == null && next != cur && cands[next].go != sb && cands[next].center.y > y
+                && Mathf.Abs(cands[next].center.x - cands[cur].center.x) < Screen.width * 0.25f) return false; // a header button straight above
+        }
+        var rt = (RectTransform) sb.transform;
+        var c = new Candidate { go = sb };
+        c.screen = ScreenRect(rt, corners); c.center = c.screen.center; c.press = c.center;
+        SetFocus(c);
+        return true;
     }
 
     private float staleTimer;
@@ -553,6 +589,16 @@ public class TVNav : MonoBehaviour
         var cs = n.Gather(true); int i = IndexOf(cs, go);
         if (i >= 0) { n.autoUntil = 0f; n.SetFocus(cs[i]); } // the screen chose: no more re-aiming at the middle
         else Debug.Log("[NAV] FocusButton: not focusable now: " + go.name);
+    }
+
+    // something outside the usual lists (the power button in the corner)
+    public static void FocusDirect(GameObject go)
+    {
+        var n = _instance;
+        if (n == null || go == null) return;
+        var c = new Candidate { go = go };
+        c.screen = ScreenRect((RectTransform) go.transform, n.corners); c.center = c.screen.center; c.press = c.center;
+        n.autoUntil = 0f; n.SetFocus(c);
     }
 
     public static void FocusTile(Transform tile)
@@ -1021,12 +1067,23 @@ public class TVNav : MonoBehaviour
                 // huge catch-all blockers (full screen backgrounds) aren't things to focus
                 if (r.width > Screen.width * 0.92f && r.height > Screen.height * 0.8f) continue;
                 if (!screenRect.Contains(r.center)) continue;
-                if (!(homeClear && curGridT != null && target.transform.IsChildOf(curGridT) && IsTile(target)) && !IsTopmost(target, r.center, data, cursorRoot)) continue;
+                Vector2 press = r.center;
+                if (!(homeClear && curGridT != null && target.transform.IsChildOf(curGridT) && IsTile(target)) && !IsTopmost(target, r.center, data, cursorRoot))
+                {
+                    // partly covered (a see-through strip over the middle, the edge of a list's frame): any other spot of it that
+                    // is on top still counts, and the press goes there (Content Hub's banner "Set" button was never reachable)
+                    bool any = false;
+                    foreach (var f in new[] { new Vector2(0f, 0.3f), new Vector2(0f, -0.3f), new Vector2(-0.3f, 0f), new Vector2(0.3f, 0f) })
+                    {
+                        var pt = r.center + new Vector2(r.width * f.x, r.height * f.y);
+                        if (screenRect.Contains(pt) && IsTopmost(target, pt, data, cursorRoot)) { press = pt; any = true; break; }
+                    }
+                    if (!any) continue;
+                }
 
                 // the bar's round buttons: the D-pad finds the button you see, not its clickable box (the mail's box sits
                 // left of its face, about where the HDMI button is, so Left from mail used to skip HDMI); the press
                 // still lands where it always did
-                Vector2 press = r.center;
                 var face = RoundFace(target);
                 if (face != null)
                 {
@@ -1080,6 +1137,7 @@ public class TVNav : MonoBehaviour
     private static Transform ModalRoot()
     {
         if (PopupController.CurrentPopup != null && PopupController.CurrentPopup.activeInHierarchy) return PopupController.CurrentPopup.transform;
+        if (TVPower.PanelRoot != null) return TVPower.PanelRoot;
         var tc = ThemeController._instance;
         if (tc != null && tc.themeReviewOverlay != null && tc.themeReviewOverlay.activeInHierarchy) return tc.themeReviewOverlay.transform;
         return null;
@@ -1255,6 +1313,13 @@ public class TVNav : MonoBehaviour
             // leaving a theme preview: press its first button (Back / Done)
             var btn = overlay.GetComponentInChildren<Button>(false);
             if (btn != null && btn.interactable) { btn.onClick.Invoke(); return true; }
+        }
+        // the animation editor had no way out on a remote (the app had to be restarted): Back asks, then leaves it
+        var ed = EditorController._instance;
+        if (ed != null && ed.currentChannelAnimation != null && !(SettingsController._instance != null && SettingsController._instance.settingsView != null && SettingsController._instance.settingsView.activeInHierarchy))
+        {
+            PopupController.ShowPopup("tv.editor.leave", () => { PopupController.ClosePopup(); ed.ExitEditor(); }, PopupController.ClosePopup);
+            return true;
         }
         var sc = SettingsController._instance;
         if (sc != null && sc.settingsView != null && sc.settingsView.activeInHierarchy && sc.backButton != null && sc.backButton.isActiveAndEnabled)
@@ -1507,7 +1572,7 @@ public class TVNav : MonoBehaviour
             litColor = litImg.color;
             litEdge = litImg.gameObject.AddComponent<Outline>();
             litEdge.effectDistance = new Vector2(5f, -5f); litEdge.useGraphicAlpha = false;
-            if (TVGlass.On) { litImg.color = new Color(0.55f, 0.82f, 1f, litColor.a); litEdge.effectColor = new Color(1f, 0.85f, 0.15f, 1f); litPulse = false; }
+            if (TVGlass.On) { litImg.color = new Color(0.55f, 0.82f, 1f, litColor.a); litEdgeColor = new Color(0.35f, 0.85f, 1f, 1f); litEdge.effectColor = litEdgeColor; litPulse = true; } // 2026's own cyan (it was yellow)
             else
             {
                 // the hover light's own colour (Settings > Hover light color), breathing like the light does

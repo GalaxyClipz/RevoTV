@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -47,7 +47,9 @@ public class TVPerf : MonoBehaviour
         TVWeatherPreview.Ensure(this);
         StartCoroutine(MeasureChip());
         StartCoroutine(HideSplashOnceDrawn());
+        TVPower.Ensure(this);
         if (Flag("server")) { yield return new WaitForSeconds(6f); TVServerScreen.Show(); } // test switch: opens the Channel Server screen
+        if (Flag("weather")) { yield return new WaitForSeconds(8f); TVWeather.Show(); } // test switch: opens the Forecast Channel
         StartCoroutine(RefreshThemeOnceReady());
         StartCoroutine(DebugSwitches());
         StartCoroutine(CoolIdle());
@@ -95,12 +97,15 @@ public class TVPerf : MonoBehaviour
     }
 
     // RevoActivity's banner cover goes once the menu (or the first-run warning) has drawn a frame
+    // when the start-up cover began to lift (-1 = still up): the corner power button fades in with the menu from then
+    public static float SplashOffAt = -1f;
     private IEnumerator HideSplashOnceDrawn()
     {
         var app = AppController._instance;
         while (app == null || app.mainView == null || !(app.mainView.activeInHierarchy || app.warningView.activeInHierarchy)) yield return null;
         yield return null; yield return new WaitForEndOfFrame();
         Debug.Log("[PERF] menu drawn at t=" + Time.realtimeSinceStartup.ToString("0.0") + ", start-up cover off");
+        SplashOffAt = Time.unscaledTime;
 #if UNITY_ANDROID && !UNITY_EDITOR
         try { using var c = new AndroidJavaClass("com.karuzohikari.revotv.RevoActivity"); c.CallStatic("hideSplash"); } catch (System.Exception) { }
 #endif

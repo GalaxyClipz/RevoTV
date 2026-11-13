@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aphr="http://schemas.android.com/aapt" android:drawable="@drawable/revotv_dots">
+    <target android:name="d0">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="0" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+    <target android:name="d1">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="300" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+    <target android:name="d2">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="600" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+    <target android:name="d3">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="900" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+    <target android:name="d4">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="1200" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+    <target android:name="d5">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="1500" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+    <target android:name="d6">
+        <aphr:attr name="android:animation">
+            <objectAnimator android:propertyName="fillAlpha" android:valueFrom="0.3" android:valueTo="1" android:duration="950" android:startOffset="1800" android:repeatCount="infinite" android:repeatMode="reverse" />
+        </aphr:attr>
+    </target>
+</animated-vector>

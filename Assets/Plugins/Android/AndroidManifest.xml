@@ -6,12 +6,15 @@
     <provider android:name="androidx.core.content.FileProvider" android:authorities="com.karuzohikari.bubbyfork.fileprovider" android:exported="false" android:grantUriPermissions="true">
       <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_paths" />
     </provider>
-    <activity android:name="com.karuzohikari.revotv.RevoActivity" android:theme="@style/UnityThemeSelector" android:exported="true" android:banner="@drawable/revotv_banner">
+    <!-- the app list entry: opens Revo as the home screen when it is the TV's home (RevoLaunch) -->
+    <activity android:name="com.karuzohikari.revotv.RevoLaunch" android:exported="true" android:banner="@drawable/revotv_banner" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:noHistory="true" android:excludeFromRecents="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
         <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
       </intent-filter>
+    </activity>
+    <activity android:name="com.karuzohikari.revotv.RevoActivity" android:theme="@style/UnityThemeSelector" android:exported="false" android:banner="@drawable/revotv_banner">
       <!-- the HOME entry lives only on the ".launcher" alias below, turned on and off by "Use as home screen" -->
       <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
       <meta-data android:name="unityplayer.SkipPermissionsDialog" android:value="true" />

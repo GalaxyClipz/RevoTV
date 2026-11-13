@@ -18,6 +18,7 @@ public class TVWeatherPreview : MonoBehaviour
     private Image sunImg, moonImg;
     private readonly RectTransform[] clouds = new RectTransform[4];
     private TextMeshProUGUI title, sub;
+
     private AudioSource chime;
     private static AudioClip chimeClip;
     private float builtAt, nextSky;
@@ -53,7 +54,7 @@ public class TVWeatherPreview : MonoBehaviour
     {
         bool want = Wanted();
         if (want && root == null) Build();
-        else if (!want && root != null) { Destroy(root.gameObject); root = null; }
+        else if (!want && root != null) { Destroy(root.gameObject); root = null; if (chime != null) chime.Stop(); }
         if (root == null) return;
         Fit();
         if (Time.unscaledTime >= nextSky) { nextSky = Time.unscaledTime + 30f; PaintSky(); }
@@ -134,12 +135,16 @@ public class TVWeatherPreview : MonoBehaviour
 
         var font = TVServerScreen.SettingsFont();
         float h = 720f;
-        title = TVServerScreen.Text(root, "Forecast Channel", font, h * 0.12f, Color.white);
-        Place(title.rectTransform, 0.5f, 0.42f, 0.9f, 0.18f);
+        title = TVServerScreen.Text(root, "Forecast Channel", font, h * 0.078f, Color.white);
+        Place(title.rectTransform, 0.5f, 0.4f, 0.8f, 0.12f);
         title.fontStyle = FontStyles.Bold;
+        title.enableAutoSizing = true; title.fontSizeMin = h * 0.04f; title.fontSizeMax = h * 0.078f; // never cut off at the sides
+        title.enableAutoSizing = true; title.fontSizeMin = h * 0.04f; title.fontSizeMax = h * 0.078f; // never cut off at the sides
         title.outlineWidth = 0.18f; title.outlineColor = new Color32(10, 40, 90, 200);
-        sub = TVServerScreen.Text(root, "", font, h * 0.055f, Color.white);
-        Place(sub.rectTransform, 0.5f, 0.3f, 0.9f, 0.1f);
+        sub = TVServerScreen.Text(root, "", font, h * 0.034f, Color.white);
+        Place(sub.rectTransform, 0.5f, 0.325f, 0.8f, 0.07f);
+        sub.enableAutoSizing = true; sub.fontSizeMin = h * 0.022f; sub.fontSizeMax = h * 0.034f;
+        sub.enableAutoSizing = true; sub.fontSizeMin = h * 0.022f; sub.fontSizeMax = h * 0.034f;
         sub.outlineWidth = 0.15f; sub.outlineColor = new Color32(10, 40, 90, 180);
 
         PaintSky();
@@ -241,7 +246,8 @@ public class TVWeatherPreview : MonoBehaviour
         }
         if (chime == null) { chime = gameObject.AddComponent<AudioSource>(); chime.playOnAwake = false; chime.spatialBlend = 0f; }
         chime.volume = 0.7f;
-        chime.PlayOneShot(chimeClip);
+        chime.clip = chimeClip; chime.loop = true;
+        chime.Play();
     }
 
     private static T Make<T>(string name, Transform parent) where T : Graphic

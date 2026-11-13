@@ -511,6 +511,7 @@ public class WebRequestController : MonoBehaviour
         var req = new UnityWebRequest(url, RequestType.GET.ToString());
         req.downloadHandler = new DownloadHandlerBuffer();
         req.timeout = 20;
+        if (url.Contains("gametdb.com")) req.SetRequestHeader("User-Agent", "RevoTV/" + Application.version);
 
         if (askThroughHttp)
         {
