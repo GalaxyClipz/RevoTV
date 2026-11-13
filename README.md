@@ -1,5 +1,3 @@
-<p align="center"><img src="docs/banner.png" alt="RevoTV" width="100%"></p>
-
 # RevoTV
 
 A Wii-inspired launcher reimagined for Android TV.
