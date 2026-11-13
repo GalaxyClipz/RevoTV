@@ -2155,6 +2155,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
 
         private void Update()
         {
+            AudioController.HoldHomeSilent();
             t += Time.unscaledDeltaTime;
             PollZip();
             if (zipPad != null)

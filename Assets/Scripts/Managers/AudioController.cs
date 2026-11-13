@@ -249,13 +249,27 @@ public class AudioController : MonoBehaviour
         _instance.backgroundAudio.DOFade(0f, seconds).OnComplete(() => Debug.Log("[Music] home music faded out, volume=" + _instance.backgroundAudio.volume.ToString("0.00")));
     }
 
+    // the Forecast keeps the home music silent while it is open: closing the channel preview behind it turns the home music back
+    // up ("unmute"), and when that landed after the fade-out (a slow frame while the Forecast was being built) the home music
+    // played over the Forecast's own. Checked every frame; a quick fade if anything turned it up again.
+    public static void HoldHomeSilent()
+    {
+        if (_instance == null || !TVMode.IsTV || _instance.backgroundAudio == null) return;
+        var a = _instance.backgroundAudio;
+        _instance.homeFaded = true; // so leaving the Forecast brings it back
+        if (a.volume <= 0.001f || DOTween.IsTweening(a)) return;
+        Debug.Log("[Music] home music was turned up under the Forecast: faded out again");
+        a.DOFade(0f, 0.3f);
+    }
+
     public static void FadeInHome(float seconds = 1.8f)
     {
         if (_instance == null || !_instance.homeFaded) return;
         _instance.homeFaded = false;
         var a = _instance.backgroundAudio;
         a.DOKill();
-        if (!a.isPlaying) return;
+        // not playing (between songs): the volume is put back at once, so the next song doesn't start silent
+        if (!a.isPlaying) { a.volume = _instance.defaultBackgroundVolume; return; }
         a.mute = false;
         a.DOFade(_instance.defaultBackgroundVolume, seconds).OnComplete(() => Debug.Log("[Music] home music faded back in, volume=" + a.volume.ToString("0.00")));
     }
