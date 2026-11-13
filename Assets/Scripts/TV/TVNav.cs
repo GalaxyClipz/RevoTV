@@ -282,7 +282,7 @@ public class TVNav : MonoBehaviour
         TVScreenFx.Tick(Time.unscaledDeltaTime); TVFrameProbe.End("screenfx", pt); pt = TVFrameProbe.Begin();
 
         staleTimer -= Time.unscaledDeltaTime;
-        if (staleTimer <= 0f) { staleTimer = 0.4f; ReleaseStaleHover(); }
+        if (staleTimer <= 0f && !ListPreviewOpen()) { staleTimer = 0.4f; ReleaseStaleHover(); }
         TVFrameProbe.End("stalehover", pt); pt = TVFrameProbe.Begin();
         checkTimer -= Time.unscaledDeltaTime;
         if (checkTimer <= 0f)
@@ -903,9 +903,14 @@ public class TVNav : MonoBehaviour
     }
 
     // Called a few times a second: drop focus that got covered / hidden and, in remote mode, always have something highlighted
+    // a list row held to preview its animation (Settings): the preview covers the list, and the row it was opened from must keep
+    // the focus until OK is let go (the focus jumped to Back, which counted as letting go: the preview closed after a moment)
+    private static bool ListPreviewOpen() { var pv = PreviewController._instance; return pv != null && pv.isOpen && pv.TvListPreview; }
+
     private void KeepFocusValid()
     {
         if (PointerMode || EventSystem.current == null || pageBusy) return;
+        if (ListPreviewOpen()) return;
         // a tile's open menu keeps the focus (a channel's buttons sit under the tile's own cover graphics)
         if (InOptions && focus != null && focus.activeInHierarchy && focus.transform.IsChildOf(OptionsMenu.transform)) return;
         if (!InOptions) optionsTile = null;
@@ -1637,7 +1642,7 @@ public class TVNav : MonoBehaviour
         EnsureGlow();
         if (glowRect == null) return;
 
-        bool show = !PointerMode && focus != null && focus.activeInHierarchy && TVMode.IsTV && !OnWarningScreen;
+        bool show = !PointerMode && focus != null && focus.activeInHierarchy && TVMode.IsTV && !OnWarningScreen && !ListPreviewOpen();
         // an empty slot on a custom theme shows only the theme's own hover ring, like its installed tiles (Revo's light showed
         // through the see-through slot as a second ring)
         if (show && EmptyAppHandler.ThemeRingOnly(focus)) show = false;

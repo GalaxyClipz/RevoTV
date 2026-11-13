@@ -80,7 +80,54 @@ public class PreviewController : MonoBehaviour
         decoyOverlayThumbnail.SetActive(showThumbnailButtons);
 
         currentTween?.Kill();
+        TvListPreview = TVMode.IsTV && !CameraController.IsPortrait() && !showEditorOverlay && !showThumbnailButtons;
+        TvLayout(TvListPreview);
         StartCoroutine(_ShowDecoy(animation, manuallyPlayAnimation));
+    }
+
+    // ---- TV: a plain preview (an animation held in a list) fills the TV screen like a channel opened from the home menu.
+    // The panel is drawn for a phone (1080 x 1920): on a TV it came down as a tall black strip cut off at the top.
+    public bool TvListPreview { get; private set; }
+    private bool tvSaved, tvApplied;
+    private Vector2 tvSize, tvBannerSize; private Vector3 tvScale;
+    private RectTransform tvBanner;
+    private readonly System.Collections.Generic.List<(RectTransform rt, Vector2 size)> tvBars = new System.Collections.Generic.List<(RectTransform, Vector2)>();
+
+    private void TvLayout(bool on)
+    {
+        var rt = (RectTransform) mainDecoy.transform;
+        if (!tvSaved)
+        {
+            tvSaved = true;
+            tvSize = rt.sizeDelta; tvScale = rt.localScale;
+            var bt = decoyBanner != null ? decoyBanner.transform.Find("ChannelObjects") : null;
+            tvBanner = bt as RectTransform;
+            if (tvBanner != null)
+            {
+                tvBannerSize = tvBanner.sizeDelta;
+                foreach (var c in tvBanner.GetComponentsInChildren<RectTransform>(true)) if (c.name == "Black Bar") tvBars.Add((c, c.sizeDelta));
+            }
+        }
+        if (on)
+        {
+            var parent = rt.parent as RectTransform;
+            float pw = parent != null && parent.rect.width > 1f ? parent.rect.width : CameraController.GetFixedWidth();
+            float ph = parent != null && parent.rect.height > 1f ? parent.rect.height : CameraController.GetFixedHeight();
+            float k = ph / tvSize.y; // the phone panel's height becomes the screen's height
+            rt.localScale = new Vector3(tvScale.x * k, tvScale.y * k, tvScale.z);
+            rt.sizeDelta = new Vector2(pw / k, tvSize.y); // and it is as wide as the screen
+            if (!tvApplied) rt.localPosition = new Vector3(0f, ph, rt.localPosition.z); // comes down from above the screen
+            if (tvBanner != null) { tvBanner.sizeDelta = tvBannerSize; TVLayout.FitChannelView(tvBanner.gameObject, null, null); } // the banner widened like the home menu's
+            tvApplied = true;
+            Debug.Log("[Preview] TV layout " + Mathf.RoundToInt(pw) + "x" + Mathf.RoundToInt(ph) + " scale " + k.ToString("0.000"));
+        }
+        else if (tvApplied)
+        {
+            rt.sizeDelta = tvSize; rt.localScale = tvScale;
+            if (tvBanner != null) tvBanner.sizeDelta = tvBannerSize;
+            foreach (var b in tvBars) if (b.rt != null) b.rt.sizeDelta = b.size;
+            tvApplied = false;
+        }
     }
 
     public IEnumerator _ShowDecoy(ChannelAnimation animation, bool manuallyPlayAnimation = false)
@@ -90,13 +137,13 @@ public class PreviewController : MonoBehaviour
         
         if (manuallyPlayAnimation)
         {
-            currentTween = mainDecoy.transform.DOLocalMoveY(0f, 0.7f);
+            currentTween = mainDecoy.transform.DOLocalMoveY(0f, TvListPreview ? 0.45f : 0.7f);
         }
         else
         {
             currentTween = DOTween.Sequence()
                 .AppendCallback(() => AnimationController._instance.ChangeCurrentAnimation(animation))
-                .Append(mainDecoy.transform.DOLocalMoveY(0f, 0.7f))
+                .Append(mainDecoy.transform.DOLocalMoveY(0f, TvListPreview ? 0.45f : 0.7f))
                 .AppendCallback(() =>
                 {
                     AnimationController._instance.RestartChannelAnimation(false);
@@ -112,13 +159,14 @@ public class PreviewController : MonoBehaviour
         currentTween?.Kill();
         
         currentTween = DOTween.Sequence()
-            .Append(mainDecoy.transform.DOLocalMoveY(CameraController.GetFixedHeight(), 0.7f))
+            .Append(mainDecoy.transform.DOLocalMoveY(TvListPreview ? HideY() : CameraController.GetFixedHeight(), TvListPreview ? 0.45f : 0.7f))
             .AppendCallback(() =>
             {
                 currentDecoy.SetActive(false);
                 mainDecoy.SetActive(false);
                 currentAnimation = null;
                 HideThumbnail();
+                TvListPreview = false;
                 if (!isEditor)
                 {
                     AnimationController._instance.ChangeCurrentAnimation(null);
@@ -127,6 +175,8 @@ public class PreviewController : MonoBehaviour
         AudioController.StopMainAudio();
         AudioController.UnmuteBackgroundAudio();
     }
+
+    private float HideY() { var p = mainDecoy.transform.parent as RectTransform; return p != null && p.rect.height > 1f ? p.rect.height : CameraController.GetFixedHeight(); }
 
     public void ShowThumbnail(Texture2D thumbnail)
     {
