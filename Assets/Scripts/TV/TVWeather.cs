@@ -417,19 +417,28 @@ public static class TVWeather
                 Render();
                 yield break;
             }
-            string url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat.ToString(inv)
+            string url = "/v1/forecast?latitude=" + lat.ToString(inv)
                 + "&longitude=" + lon.ToString(inv)
                 + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,is_day"
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,uv_index_max"
                 + "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=6";
             // a slow or dropped answer is tried again (three goes) before the forecast is called offline
+            // (the weather service's own server sometimes hangs on the secure connection for a while: seen 2026-11-13, while its other
+            // servers and the rest of the internet answered. A short wait per try, then it keeps trying on its own while open.)
+            bool failed = false;
             for (int attempt = 0; attempt < 3; attempt++)
-            using (var req = UnityWebRequest.Get(url))
+            using (var req = UnityWebRequest.Get(WxUrl(url, attempt)))
             {
-                if (attempt > 0) yield return new WaitForSecondsRealtime(attempt * 3f);
-                req.timeout = 20;
+                if (attempt > 0)
+                {
+                    if (data == null) { message = "Still getting the forecast (the weather service is slow to answer)..."; Render(); }
+                    yield return new WaitForSecondsRealtime(attempt * 2f);
+                }
+                req.timeout = 10;
                 yield return req.SendWebRequest();
                 if (req.result != UnityWebRequest.Result.Success && attempt < 2) { Debug.Log("[Weather] try " + (attempt + 1) + ": " + req.error); continue; }
+                failed = req.result != UnityWebRequest.Result.Success;
+                if (!failed) WxWorked(attempt);
                 attempt = 3;
                 if (req.result == UnityWebRequest.Result.Success)
                 {
@@ -441,10 +450,20 @@ public static class TVWeather
                     }
                     catch (Exception e) { Debug.Log("[Weather] " + e.Message); message = data == null ? "The forecast couldn't be read" : null; }
                 }
-                else message = data == null ? "No connection: the forecast shows when the TV is online" : "Offline: showing the last forecast";
+                else message = data == null ? "The weather service isn't answering: trying again..." : "The weather service isn't answering: showing the last forecast, trying again...";
             }
             if (page >= PageCount) page = 0;
             Render();
+            if (failed) { Debug.Log("[Weather] no answer: trying again in 30 s"); if (retryLater != null) StopCoroutine(retryLater); retryLater = StartCoroutine(FetchLater(30f)); }
+        }
+
+        // tried again on its own while the forecast is open (it closes with the screen)
+        private Coroutine retryLater;
+        private IEnumerator FetchLater(float wait)
+        {
+            yield return new WaitForSecondsRealtime(wait);
+            retryLater = null;
+            Fetch();
         }
 
         private void Go(int to)
@@ -1237,6 +1256,16 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             return shown;
         }
 
+        private bool globeWxFailed;
+
+        // the weather service's main server sometimes stops answering (2026-11-13: its secure connection hung for hours, on and off)
+        // while the same forecasts kept coming from its other servers: a try that gets no answer goes to the next one, and the one
+        // that answered is used first from then on
+        private static readonly string[] WxHosts = { "https://api.open-meteo.com", "https://previous-runs-api.open-meteo.com", "https://historical-forecast-api.open-meteo.com" };
+        private static int wxHost;
+        private static string WxUrl(string pathAndQuery, int attempt) => WxHosts[(wxHost + attempt) % WxHosts.Length] + pathAndQuery;
+        private static void WxWorked(int attempt) { int h = (wxHost + attempt) % WxHosts.Length; if (h != wxHost) Debug.Log("[Weather] answered by " + WxHosts[h]); wxHost = h; }
+        private static void WxNext() { wxHost = (wxHost + 1) % WxHosts.Length; }
         public void FetchGlobe() { StopCoroutine("GlobeRoutine"); StartCoroutine("GlobeRoutine"); if (globeZoom >= SatZoom - 1) StartCoroutine(SatRoutine()); }
 
         // ---- satellite photo: from SatZoom on, the map is Esri's World Imagery (tiles fetched around the view, stitched into one texture)
@@ -1377,7 +1406,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             {
                 var sla = new List<string>(); var slo = new List<string>();
                 for (int s = 0; s < StN.Length; s++) { sla.Add(StLat[s].ToString(inv)); slo.Add(StLon[s].ToString(inv)); }
-                using (var sreq = UnityWebRequest.Get("https://api.open-meteo.com/v1/forecast?latitude=" + string.Join(",", sla) + "&longitude=" + string.Join(",", slo) + "&current=temperature_2m&temperature_unit=fahrenheit&timezone=auto"))
+                using (var sreq = UnityWebRequest.Get(WxUrl("/v1/forecast?latitude=" + string.Join(",", sla) + "&longitude=" + string.Join(",", slo) + "&current=temperature_2m&temperature_unit=fahrenheit&timezone=auto", 0)))
                 {
                     sreq.timeout = 15;
                     yield return sreq.SendWebRequest();
@@ -1400,13 +1429,23 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             if (need.Count == 0) yield break;
             var la = new List<string>(); var lo = new List<string>();
             foreach (int i in need) { la.Add(TLa(i).ToString(inv)); lo.Add(TLo(i).ToString(inv)); }
-            string url = "https://api.open-meteo.com/v1/forecast?latitude=" + string.Join(",", la) + "&longitude=" + string.Join(",", lo)
+            string url = "/v1/forecast?latitude=" + string.Join(",", la) + "&longitude=" + string.Join(",", lo)
                 + "&current=temperature_2m,weather_code,is_day&temperature_unit=fahrenheit&timezone=auto";
-            using (var req = UnityWebRequest.Get(url))
+            using (var req = UnityWebRequest.Get(WxUrl(url, 0)))
             {
-                req.timeout = 15;
+                req.timeout = 10;
                 yield return req.SendWebRequest();
-                if (req.result != UnityWebRequest.Result.Success) yield break;
+                if (req.result != UnityWebRequest.Result.Success)
+                {
+                    WxNext();
+                    // the map said "Getting the weather around the world..." for good: it says the service is slow and tries again
+                    Debug.Log("[Globe] weather: " + req.error + ": trying again in 15 s");
+                    globeWxFailed = true; if (globe && !spinning) Render();
+                    yield return new WaitForSecondsRealtime(15f);
+                    if (globe) FetchGlobe();
+                    yield break;
+                }
+                globeWxFailed = false;
                 try
                 {
                     var tk = JToken.Parse(req.downloadHandler.text);
@@ -2085,7 +2124,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
                 Box(space, "Scale", 0.02f, 0.935f, 0.02f + frac, 0.94f, new Color(1f, 1f, 1f, 0.9f));
                 Label(space, nice.ToString("0.###") + (mi ? " mi" : " km"), 0.026f, white, TextAlignmentOptions.Left, 0.02f + frac + 0.008f, 0.915f, 0.3f, 0.96f);
             }
-            if (globeZoom >= TownZoom && cityWx.Count == 0) Label(space, "Getting the weather around the world...", 0.04f, white, TextAlignmentOptions.Center, 0f, 0.02f, 1f, 0.12f);
+            if (globeZoom >= TownZoom && cityWx.Count == 0) Label(space, globeWxFailed ? "The weather service is slow to answer: trying again..." : "Getting the weather around the world...", 0.04f, white, TextAlignmentOptions.Center, 0f, 0.02f, 1f, 0.12f);
             else if (townCity >= 0 && globeZoom >= TownZoom && cityWx.TryGetValue(townCity, out var tw))
             {
                 // the town just visited, said plainly at the top

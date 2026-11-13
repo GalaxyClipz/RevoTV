@@ -91,7 +91,9 @@ public class GridController : MonoBehaviour
         }
         if (warmed.Count == 0) yield break;
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        void Hush() { foreach (var kv in hush) if (kv.Value != null) kv.Value.alpha = kv.Key == currentGrid && !isChangingGrid ? 1f : 0f; }
+        // during a page change the page being left keeps its time: the still picture of the bar is taken from it, and with every
+        // clock see-through then, that picture had no time = the time vanishing while paging quickly soon after start-up
+        void Hush() { foreach (var kv in hush) if (kv.Value != null) kv.Value.alpha = (isChangingGrid ? kv.Key == slideFrom : kv.Key == currentGrid) ? 1f : 0f; }
         for (float until = Time.unscaledTime + 2f; Time.unscaledTime < until;) { Hush(); yield return null; }
         while (isChangingGrid) { Hush(); yield return null; }
         foreach (var g in warmed) if (g != null && g != currentGrid) g.FixPositions(true);
@@ -331,6 +333,7 @@ public class GridController : MonoBehaviour
     // texture, and that picture is shown on top of the bar until the slide has settled. Works the same for every look and theme.
     private static RenderTexture barShot;
     private static UnityEngine.UI.RawImage barImg;
+    private static Grid slideFrom; // the page the latest page change left
     private static int barHolds; // page changes in progress (a quick second one keeps the first picture)
 
     private static bool FreezeBar(Grid page)
@@ -501,6 +504,7 @@ public class GridController : MonoBehaviour
         TVFrameProbe.End("leavehover", p0);
         // Then we proceed
         Grid previousGrid = currentGrid;
+        slideFrom = previousGrid;
         currentGrid = grids[grid];
         isChangingGrid = true;
 

@@ -89,7 +89,7 @@ public class Grid : MonoBehaviour
             appHandler.Resize(size);
             // classic TV: a filled tile has its own proportions (the same ones TVNav keeps them at); set at once, not a moment later, so a resize never shows a tile in the wrong shape
             if (TVMode.IsTV && !TVGlass.On && !CameraController.IsPortrait())
-                appHandler.transform.localScale = Vector3.Scale(appHandler.transform.localScale, new Vector3(TVTune.Get("fillx", 1.052f), TVTune.Get("filly", 0.974f), 1f));
+                appHandler.transform.localScale = Vector3.Scale(appHandler.transform.localScale, TVMode.TileFill);
         });
         innerGrid.transform.GetComponentsInChildren<EmptyAppHandler>().ToList().ForEach(appHandler => appHandler.Resize(size));
     }

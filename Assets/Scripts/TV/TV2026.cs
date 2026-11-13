@@ -501,12 +501,18 @@ public static class TV2026
     {
         var holder = bar != null && bar.parent != null ? bar.parent.Find("Grid ScrollView") : null;
         if (holder == null) return;
+        // not while a channel is open or the camera zooms in / out of one: the curve's spot is worked out in screen pixels, and
+        // with the camera zoomed those turned into other sizes, so the curve and the time were re-placed a few px off and put
+        // back after the zoom (the time hopping as a preview closed, seen 2026-11-12)
+        var ccz = ChannelController._instance;
+        if (AppController.IsTransitioning() || (ccz != null && ccz.currentChannel != null)) return;
         // every page of the grid carries its own copy of the curve. Finding them walked every object on every page by name each
         // frame (14% of the main thread and most of its garbage, measured 2026-11-07): the list is kept and looked up again once
         // a second or when the number of pages changes. The per-frame placement below is unchanged.
         int pages = GridController._instance != null ? GridController._instance.GetNumberOfGrids() : 0;
         if (clipCache.Count == 0 || pages != clipPages || Time.unscaledTime >= clipScanAt || clipCache.Exists(c => c == null))
         {
+            if (pages != clipPages) syncedFor = null;
             clipCache.Clear(); clipPages = pages; clipScanAt = Time.unscaledTime + 1f;
             foreach (var rtf in holder.GetComponentsInChildren<RectTransform>(true))
                 if (rtf.name == "BottomClip") clipCache.Add(rtf);
@@ -728,8 +734,33 @@ public static class TV2026
                     Vector2 dA = hrt.anchoredPosition - a0;
                     clockPin[holder] = (clockPin.TryGetValue(holder, out var pin0) ? pin0 : Vector2.zero) + dA;
                     if (clockWant.TryGetValue(holder, out var cw1)) clockWant[holder] = (cw1.pos + dA, cw1.scale);
+                    syncedFor = null;
                 }
+                if (syncedFor != holder) { syncedFor = holder; SyncPageClocks(holder); }
             }
+        }
+    }
+
+    // every page carries its own copy of the time: only the shown page's was centred, so the next page's slid in off-centre
+    // and hopped ~26 px a moment after the page change. All copies get the same spot on their page as the centred one.
+    private static Transform syncedFor;
+    private static void SyncPageClocks(Transform holder)
+    {
+        Transform refPage = null;
+        for (int i = 0; i < clipCache.Count; i++) if (clipCache[i] != null && ClipParts(clipCache[i]).clock == holder) { refPage = clipCache[i].parent; break; }
+        if (refPage == null) return;
+        float rel = holder.position.x - refPage.position.x;
+        for (int i = 0; i < clipCache.Count; i++)
+        {
+            var clip = clipCache[i]; if (clip == null) continue;
+            var ck = ClipParts(clip).clock; if (ck == null || ck == holder) continue;
+            float want = clip.parent.position.x + rel;
+            if (Mathf.Abs(ck.position.x - want) < 0.01f) continue;
+            var rt = (RectTransform) ck; Vector2 a0 = rt.anchoredPosition;
+            ck.position = new Vector3(want, ck.position.y, ck.position.z);
+            Vector2 dA = rt.anchoredPosition - a0;
+            clockPin[ck] = (clockPin.TryGetValue(ck, out var p0) ? p0 : Vector2.zero) + dA;
+            if (clockWant.TryGetValue(ck, out var w0)) clockWant[ck] = (w0.pos + dA, w0.scale);
         }
     }
 

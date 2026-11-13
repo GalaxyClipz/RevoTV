@@ -94,7 +94,7 @@ public class TVNav : MonoBehaviour
             if (h.transform == liftT) continue;
             // a channel's frame is taller and narrower than an empty slot's: drawn to the same footprint, every gap is the same
             var target = h is EmptyAppHandler ? want * eg
-                : TVMode.IsTV && !TVGlass.On ? Vector3.Scale(want, new Vector3(TVTune.Get("fillx", 1.052f), TVTune.Get("filly", 0.974f), 1f)) : want;
+                : TVMode.IsTV && !TVGlass.On ? Vector3.Scale(want, TVMode.TileFill) : want;
             if ((h.transform.localScale - target).sqrMagnitude > 0.0004f) h.transform.localScale = target;
         }
         if (liftT != null) liftBase = want;

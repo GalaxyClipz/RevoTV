@@ -149,6 +149,7 @@ public class ChannelController : MonoBehaviour
         }
         canSkipChannel = false;
         
+        StartCoroutine(ZoomProbe("in", duration));
         CameraController._instance.ZoomIn(currentChannel.appHandler,duration);
         float size = CameraController.GetChannelSize(0.18f) * GridController._instance.GetChannelSizeMultiplier();
         channelObjects.transform.DOScale(new Vector3(size, size, 1f),duration).SetEase(defaultEase);
@@ -172,6 +173,18 @@ public class ChannelController : MonoBehaviour
         yield return new WaitForSeconds(0.1f);
         blackBorder.gameObject.SetActive(true);
         AppController.SetTransitioning(false);
+    }
+
+    // a channel's zoom in / out: how many frames it got and what the slow ones spent their time on (one log line each)
+    private IEnumerator ZoomProbe(string what, float duration)
+    {
+        if (!TVMode.IsTV) yield break;
+        float t0 = Time.unscaledTime; int f0 = Time.frameCount;
+        TVFrameProbe.Report = ""; TVFrameProbe.ProbeStart = t0; TVFrameProbe.ProbeUntil = t0 + duration;
+        yield return new WaitForSecondsRealtime(duration + 0.35f);
+        float t = Time.unscaledTime - t0; int n = Time.frameCount - f0;
+        Debug.Log("[Zoom] " + what + ": " + n + " frames in " + Mathf.RoundToInt(t * 1000f) + " ms (" + (n / t).ToString("0") + " fps) || slow frames" + TVFrameProbe.Report);
+        TVFrameProbe.Report = "";
     }
 
     private void CheckSkipChannel()
@@ -350,6 +363,7 @@ public class ChannelController : MonoBehaviour
 
     private IEnumerator _CloseChannel(float duration, bool playLeaveSound = true)
     {
+        if (duration > 0f) StartCoroutine(ZoomProbe("out", duration));
         CameraController._instance.ZoomOut(duration);
         blackBorder.gameObject.SetActive(false);
         if (playLeaveSound)
@@ -388,7 +402,7 @@ public class ChannelController : MonoBehaviour
         float s = GridController._instance.GetChannelSizeMultiplier();
         var v = new Vector3(s * TVMode.TileStretch.x, s * TVMode.TileStretch.y, 0f);
         if (TVMode.IsTV && !TVGlass.On && !CameraController.IsPortrait())
-            v = Vector3.Scale(v, new Vector3(TVTune.Get("fillx", 1.052f), TVTune.Get("filly", 0.974f), 1f));
+            v = Vector3.Scale(v, TVMode.TileFill);
         return v;
     }
 

@@ -9,7 +9,7 @@ using UnityEngine.UI;
 /// </summary>
 public class TVPower : MonoBehaviour
 {
-    public static GameObject ButtonGo => me != null && me.button != null && me.button.gameObject.activeInHierarchy ? me.button.gameObject : null;
+    public static GameObject ButtonGo => me != null && me.button != null && me.button.gameObject.activeInHierarchy && (me.fade == null || me.fade.interactable) ? me.button.gameObject : null;
     public static Transform PanelRoot => panel != null && panel.activeInHierarchy ? panel.transform : null;
     private static GameObject panel;
     private static TVPower me;
@@ -54,7 +54,15 @@ public class TVPower : MonoBehaviour
         bool show = home && (panel == null || !panel.activeSelf);
         // it comes in with the menu: a soft fade once the menu has been up a moment (it used to pop up on its own first)
         if (!home) homeSince = -1f; else if (homeSince < 0f) homeSince = Time.unscaledTime;
-        if (button.gameObject.activeSelf != show) { button.gameObject.SetActive(show); if (show && Time.unscaledTime - homeSince < 0.1f) own = 0f; }
+        // leaving the menu (a channel zooming open, settings...): it fades out with the zoom instead of vanishing at once
+        bool panelUp = panel != null && panel.activeSelf;
+        // only a channel zooming open fades it (the menu stays in view then): settings, the shop, HDMI... cover the menu at once,
+        // and a fading button showed over them
+        bool zoomOut = cc != null && cc.currentChannel != null && !panelUp;
+        if (!show) own = zoomOut ? Mathf.Max(0f, own - Time.unscaledDeltaTime / 0.22f) : 0f;
+        bool vis = show || own > 0.001f;
+        if (button.gameObject.activeSelf != vis) { button.gameObject.SetActive(vis); if (show && Time.unscaledTime - homeSince < 0.1f) own = 0f; }
+        if (fade != null && fade.interactable != show) { fade.interactable = show; fade.blocksRaycasts = show; }
         // it comes in with the menu: it follows the menu's own fade (the black cover after the warning screen; it sat on top of that at
         // full strength = popped up) and after the start-up loading cover it fades in as the menu shows
         var fc = FadeController._instance;

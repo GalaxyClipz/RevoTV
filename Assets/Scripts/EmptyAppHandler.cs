@@ -110,6 +110,20 @@ if (!paneShown && rimImg != null && rimImg.color.a != 0f) rimImg.color = new Col
             // the same size as the slot's own pane (what the theme's filled tiles also cover), centred: nothing of the built-in static peeks out above or below
             var gsz = ((RectTransform) glass).sizeDelta; if (gsz.sqrMagnitude < 4f) gsz = rectTransform.rect.size;
             trt.anchorMin = trt.anchorMax = new Vector2(0.5f, 0.5f); trt.pivot = new Vector2(0.5f, 0.5f); trt.anchoredPosition = Vector2.zero; trt.sizeDelta = gsz;
+            // the chosen slot's ring goes round that picture: it kept the slot's own box, which sat a little to one side of the
+            // theme's picture and cut into it (GameCube theme, 2026-11-13)
+            if (blueBorder != null)
+            {
+                // its lines are fixed-size boxes inside the ring's holder: each is widened / heightened from its own size, so
+                // the drawn line lands just outside the theme's picture
+                if (ringLines == null)
+                {
+                    ringLines = new List<(RectTransform, Vector2)>();
+                    foreach (Transform c in blueBorder.transform) if (c is RectTransform crt) ringLines.Add((crt, crt.sizeDelta));
+                }
+                var k = new Vector2(TVTune.Get("ringx", 1.047f), TVTune.Get("ringy", 1.017f));
+                foreach (var (crt, size0) in ringLines) { var lineSize = Vector2.Scale(size0, k); if ((crt.sizeDelta - lineSize).sqrMagnitude > 0.25f) crt.sizeDelta = lineSize; }
+            }
             // the theme's picture on top, except the chosen slot's ring, which stays over it
             bool ringTop = hoverShown && blueBorder != null;
             if (ringTop && blueBorder.transform.GetSiblingIndex() != transform.childCount - 1) blueBorder.transform.SetAsLastSibling();
@@ -486,6 +500,7 @@ if (!paneShown && rimImg != null && rimImg.color.a != 0f) rimImg.color = new Col
         Vector2 a = RectTransformUtility.WorldToScreenPoint(cam, visCorners[0]), b = RectTransformUtility.WorldToScreenPoint(cam, visCorners[2]);
         return Mathf.Max(a.x, b.x) > 0f && Mathf.Min(a.x, b.x) < Screen.width && Mathf.Max(a.y, b.y) > 0f && Mathf.Min(a.y, b.y) < Screen.height;
     }
+    private List<(RectTransform, Vector2)> ringLines;
     private bool themedStatic; private readonly List<Sprite> themedFrames = new List<Sprite>(); private Image themeEmpty, themeMask; private float nextThemeFrame; private int themeFrame;
     
     public void Resize(float size)
