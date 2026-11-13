@@ -53,6 +53,10 @@ public class TVPerf : MonoBehaviour
         StartCoroutine(RefreshThemeOnceReady());
         StartCoroutine(DebugSwitches());
         StartCoroutine(CoolIdle());
+        StartCoroutine(BlackGuard());
+        // the launcher switch in Preferences shows what the TV really has (Revo may have made itself the home screen on a TV with none)
+        try { using var rv = new AndroidJavaClass("com.karuzohikari.revotv.RevoTV"); if (rv.CallStatic<bool>("isHomeAliasOn", AndroidLinker.currentActivity) && !PREFS.IsLauncherVersion.GetBool()) PREFS.IsLauncherVersion.SetBool(true); } catch (System.Exception) { }
+        ErrorLog.Start();
         if (Flag("tilecanvas")) StartCoroutine(IsolateTiles()); // experiment only: made things slower
 
         // lightweight frame-rate meter in logcat: `adb logcat -s Unity | grep FPS`
@@ -307,6 +311,59 @@ public class TVPerf : MonoBehaviour
     } // idle this long: the video wallpaper stops on its frame and the menu cools at 15 fps
     public static bool Cooling { get; private set; }
     public static bool NoLock; // test switch --ez fps60 true: no Glass 30 fps hold (for A/B measurements)
+
+    // the menu is switched off while the Forecast covers it: if the Forecast ever goes without switching it back on, the whole
+    // screen would stay black. Checked every second: no Forecast up = the menu is on.
+    private IEnumerator BlackGuard()
+    {
+        var wait = new WaitForSecondsRealtime(1f);
+        while (true)
+        {
+            yield return wait;
+            if (TVWeather.Open) continue;
+            var app = AppController._instance;
+            var c = app != null && app.gameCanvas != null ? app.gameCanvas.GetComponentInParent<Canvas>(true) : null;
+            if (c != null) c = c.rootCanvas;
+            if (c != null && !c.enabled) { c.enabled = true; Debug.LogWarning("[GUARD] menu was left switched off: switched back on"); }
+        }
+    }
+
+    /// <summary>Errors are also kept in a small file (Android/data/.../files/revo_errors.log, newest last, kept under 64 KB): the TV's
+    /// own log only holds a few minutes, so a "it went black earlier" could not be looked into afterwards.</summary>
+    private static class ErrorLog
+    {
+        private static string path, lastMsg; private static bool on;
+        private static readonly object gate = new object(); private static System.DateTime lastAt, minuteAt; private static int inMinute;
+        public static void Start()
+        {
+            if (on) return; on = true;
+            path = System.IO.Path.Combine(Application.persistentDataPath, "revo_errors.log");
+            Application.logMessageReceivedThreaded += (msg, stack, type) =>
+            {
+                if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert && !(type == LogType.Warning && msg.StartsWith("[GUARD]"))) return;
+                // the same error over and over (every frame) is written once a minute at most: no constant writing to storage
+                var now = System.DateTime.UtcNow;
+                lock (gate)
+                {
+                    if (msg == lastMsg && (now - lastAt).TotalSeconds < 60) return;
+                    if (++inMinute > 20 && (now - minuteAt).TotalSeconds < 60) return;
+                    if ((now - minuteAt).TotalSeconds >= 60) { minuteAt = now; inMinute = 1; }
+                    lastMsg = msg; lastAt = now;
+                }
+                try
+                {
+                    var fi = new System.IO.FileInfo(path);
+                    if (fi.Exists && fi.Length > 64 * 1024)
+                    {
+                        var all = System.IO.File.ReadAllText(path);
+                        System.IO.File.WriteAllText(path, all.Substring(all.Length / 2));
+                    }
+                    System.IO.File.AppendAllText(path, System.DateTime.Now.ToString("MM-dd HH:mm:ss") + " " + type + ": " + msg + "\n" + (stack ?? "").Trim() + "\n\n");
+                }
+                catch (System.Exception) { }
+            };
+        }
+    }
 
     private IEnumerator CoolIdle()
     {

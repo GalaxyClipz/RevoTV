@@ -99,6 +99,43 @@ public final class RevoTV {
         return out;
     }
 
+    /** Revo's "home screen" entry (the activity-alias the Make Home / launcher switch turns on). */
+    static ComponentName homeAlias(Context c) { return new ComponentName(c.getPackageName(), "com.unity3d.player.launcher"); }
+
+    public static boolean isHomeAliasOn(Context c) {
+        try {
+            int st = c.getPackageManager().getComponentEnabledSetting(homeAlias(c));
+            return st == PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+        } catch (Throwable t) { return false; }
+    }
+
+    /** A TV whose own home app is switched off (and Revo's home entry is off too, e.g. right after Revo was reinstalled) only has
+     *  Android's empty fallback screen for the Home button: pressing Home there showed a black screen that nothing could leave.
+     *  Revo then makes itself the home screen. Returns true when it did. */
+    public static boolean ensureHome(Context c) {
+        try {
+            if (isHomeAliasOn(c)) return false;
+            Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+            android.content.pm.ResolveInfo r = c.getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+            String name = r != null && r.activityInfo != null ? r.activityInfo.name : null;
+            String pkg = r != null && r.activityInfo != null ? r.activityInfo.packageName : null;
+            boolean fallback = name == null || name.endsWith("FallbackHome")
+                    || "com.android.tv.settings".equals(pkg) || "com.android.settings".equals(pkg)
+                    || "android".equals(pkg); // the "choose an app" box: no home picked
+            if (!fallback) return false;
+            // only when no real launcher is left at all (a chooser with a real launcher in it is the person's choice)
+            List<ResolveInfo> all = c.getPackageManager().queryIntentActivities(home, 0);
+            for (ResolveInfo ri : all) {
+                if (ri.activityInfo == null) continue;
+                String p = ri.activityInfo.packageName, n = ri.activityInfo.name;
+                if (p.equals(c.getPackageName()) || n.endsWith("FallbackHome") || p.equals("com.android.tv.settings") || p.equals("com.android.settings")) continue;
+                return false;
+            }
+            c.getPackageManager().setComponentEnabledSetting(homeAlias(c), PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+            return true;
+        } catch (Throwable t) { return false; }
+    }
+
     /** How Revo starts itself again (a new look, an update): as the home screen when it is the TV's home, so the next Home
      *  press finds this same Revo (a plain app start put it in a second place; Home then made another Revo and the engine,
      *  which can only run once, crashed back to the HDMI input). */

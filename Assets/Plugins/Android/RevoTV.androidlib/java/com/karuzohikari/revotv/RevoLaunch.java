@@ -14,6 +14,7 @@ public class RevoLaunch extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         try {
+            RevoTV.ensureHome(this); // before choosing how to open Revo: as the home screen when it just became it
             Intent i = RevoTV.restartIntent(this);
             Intent from = getIntent();
             if (from != null && from.getExtras() != null) i.putExtras(from.getExtras());

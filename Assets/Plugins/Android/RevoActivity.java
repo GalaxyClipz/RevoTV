@@ -149,10 +149,24 @@ public class RevoActivity extends UnityPlayerActivity {
         });
     }
 
+    // whether Revo had the screen just before the system's Home handling took the focus away for a moment
+    private long focusLostAt;
+    @Override
+    public void onWindowFocusChanged(boolean has) {
+        super.onWindowFocusChanged(has);
+        if (has) focused = true; else { focusLostAt = SystemClock.elapsedRealtime(); }
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         noteIntent(intent);
+        // Revo is the TV's home screen: the remote's Home press arrives here as a HOME intent (not through the Home helper).
+        // While Revo is on screen it means "back to the menu's first page", the same as the helper's press (it left the
+        // Forecast or a channel open)
+        if (intent != null) android.util.Log.i("RevoTV", "[HOME] new intent " + intent.getAction() + " home=" + intent.hasCategory(Intent.CATEGORY_HOME) + " focus=" + hasWindowFocus() + " hadFocus=" + focused + " since=" + (SystemClock.elapsedRealtime() - Math.max(pausedAt, focusLostAt)));
+        if (intent != null && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME)
+                && (hasWindowFocus() || (focused && SystemClock.elapsedRealtime() - Math.max(pausedAt, focusLostAt) < 1500))) homePressed = true;
     }
 
     private void noteIntent(Intent i) {
@@ -166,12 +180,13 @@ public class RevoActivity extends UnityPlayerActivity {
     // Home pressed while the TV showed an HDMI input: Revo came up, then the TV's input player put the HDMI picture straight back
     // over it (seen while Revo was still loading). Right after Revo comes to the front, if the HDMI player takes over without the
     // person touching Revo, Revo takes the screen back (twice at most).
-    private long frontAt, touchedAt; private int hdmiReclaims;
+    private long frontAt, touchedAt, pausedAt; private int hdmiReclaims; private boolean focused;
     @Override
     public void onUserInteraction() { super.onUserInteraction(); touchedAt = SystemClock.elapsedRealtime(); }
 
     @Override
     protected void onPause() {
+        focused = focused || hasWindowFocus(); pausedAt = SystemClock.elapsedRealtime();
         super.onPause();
         final long now = SystemClock.elapsedRealtime();
         if (now - frontAt < 15000 && now - touchedAt > 2500 && hdmiReclaims < 2 && !isFinishing()) {
