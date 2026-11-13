@@ -93,6 +93,7 @@ public static class TVWeather
     private static readonly double[] CityLon = { 0, -104.9903, -118.2437, -122.4194, -115.1398, -112.0740, -74.0060, -87.6298, -95.3698, -80.1918, -122.3321, -0.1278, 139.6503 };
     // "My location" is found from the TV's internet address (nothing is shipped in the app): name|lat|lon, kept for next time
     private const string AutoKey = "tv.weather.auto";
+    private const string ZipDoneKey = "tv.weather.zipdone"; // the ZIP code whose town is saved in AutoKey
     private const string HomeKey = "tv.weather.home"; // "name|lat|lon": the exact spot saved with "Make this my place" (your house), over the internet's guess
     private static bool Home(out string name, out double lat, out double lon)
     {
@@ -303,7 +304,11 @@ public static class TVWeather
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             string zip = PlayerPrefs.GetString(ZipKey, "");
             bool zipFound = false;
-            if (CityIndex == 0 && zip.Length >= 3)
+            if (CityIndex == 0 && zip.Length >= 3 && PlayerPrefs.GetString(ZipDoneKey, "") == zip && Place(out _, out _))
+            {
+                // this ZIP code's town was looked up before: no need to ask again every time (saves a round trip per open)
+            }
+            else if (CityIndex == 0 && zip.Length >= 3)
             {
                 // the ZIP code's town and middle (Zippopotam), or Open-Meteo's place list as a second try
                 using (var zr = UnityWebRequest.Get("https://api.zippopotam.us/us/" + UnityWebRequest.EscapeURL(zip)))
@@ -340,6 +345,7 @@ public static class TVWeather
                     }
                 }
                 Debug.Log("[Weather] ZIP " + zip + (zipFound ? " -> " + CityName : " not found"));
+                if (zipFound) PlayerPrefs.SetString(ZipDoneKey, zip);
                 if (!zipFound) { message = "Couldn't find ZIP code " + zip + ": press Settings to type it again"; Render(); yield break; }
             }
             else if (CityIndex == 0 && HomeForWeather && Home(out _, out double hLat, out double hLon))
@@ -425,32 +431,27 @@ public static class TVWeather
             // a slow or dropped answer is tried again (three goes) before the forecast is called offline
             // (the weather service's own server sometimes hangs on the secure connection for a while: seen 2026-11-13, while its other
             // servers and the rest of the internet answered. A short wait per try, then it keeps trying on its own while open.)
-            bool failed = false;
-            for (int attempt = 0; attempt < 3; attempt++)
-            using (var req = UnityWebRequest.Get(WxUrl(url, attempt)))
+            // all the weather servers are asked at once and the first full answer is used (2026-11-13: the main one hung for 10 s+
+            // per try while the others answered in about 1 s, so waiting for it first made every open slow)
+            float t0 = Time.realtimeSinceStartup;
+            var res = new WxRes();
+            yield return WxGet(url, 10, res);
+            bool failed = res.text == null;
+            if (!failed)
             {
-                if (attempt > 0)
+                Debug.Log("[Weather] forecast in " + Mathf.RoundToInt((Time.realtimeSinceStartup - t0) * 1000f) + " ms");
+                try
                 {
-                    if (data == null) { message = "Still getting the forecast (the weather service is slow to answer)..."; Render(); }
-                    yield return new WaitForSecondsRealtime(attempt * 2f);
+                    data = Parse(res.text);
+                    PlayerPrefs.SetString(CacheName, res.text);
+                    message = null;
                 }
-                req.timeout = 10;
-                yield return req.SendWebRequest();
-                if (req.result != UnityWebRequest.Result.Success && attempt < 2) { Debug.Log("[Weather] try " + (attempt + 1) + ": " + req.error); continue; }
-                failed = req.result != UnityWebRequest.Result.Success;
-                if (!failed) WxWorked(attempt);
-                attempt = 3;
-                if (req.result == UnityWebRequest.Result.Success)
-                {
-                    try
-                    {
-                        data = Parse(req.downloadHandler.text);
-                        PlayerPrefs.SetString(CacheName, req.downloadHandler.text);
-                        message = null;
-                    }
-                    catch (Exception e) { Debug.Log("[Weather] " + e.Message); message = data == null ? "The forecast couldn't be read" : null; }
-                }
-                else message = data == null ? "The weather service isn't answering: trying again..." : "The weather service isn't answering: showing the last forecast, trying again...";
+                catch (Exception e) { Debug.Log("[Weather] " + e.Message); message = data == null ? "The forecast couldn't be read" : null; }
+            }
+            else
+            {
+                Debug.Log("[Weather] no server answered: " + res.err);
+                message = data == null ? "The weather service isn't answering: trying again..." : "The weather service isn't answering: showing the last forecast, trying again...";
             }
             if (page >= PageCount) page = 0;
             Render();
@@ -965,7 +966,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             if (spinning || !(CityIndex == 0 && Home(out _, out a, out o)) && !Place(out a, out o)) return;
             bool house = CityIndex == 0 && Home(out _, out _, out _);
             pinName = house ? "My place" : null; pinLat = (float) a; pinLon = (float) o;
-            StartCoroutine(GlideTo((float) a, (float) o, house ? GlobeZoom.Length - 3 : Mathf.Max(globeZoom, 10))); // your house, close up
+            StartCoroutine(GlideTo((float) a, (float) o, house ? GlobeZoom.Length - 3 : Mathf.Max(globeZoom, 10), "Cell My place")); // your house, close up
             return;
             globeDirty = true; Render(); FetchGlobe();
         }
@@ -1266,6 +1267,41 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
         private static string WxUrl(string pathAndQuery, int attempt) => WxHosts[(wxHost + attempt) % WxHosts.Length] + pathAndQuery;
         private static void WxWorked(int attempt) { int h = (wxHost + attempt) % WxHosts.Length; if (h != wxHost) Debug.Log("[Weather] answered by " + WxHosts[h]); wxHost = h; }
         private static void WxNext() { wxHost = (wxHost + 1) % WxHosts.Length; }
+
+        private class WxRes { public string text, err; }
+
+        // asks every weather server at once (the one that answered last time first) and keeps the first full answer; the rest are dropped
+        private IEnumerator WxGet(string pathAndQuery, int timeout, WxRes res)
+        {
+            var reqs = new UnityWebRequest[WxHosts.Length];
+            for (int i = 0; i < reqs.Length; i++)
+            {
+                reqs[i] = UnityWebRequest.Get(WxUrl(pathAndQuery, i));
+                reqs[i].timeout = timeout;
+                reqs[i].SetRequestHeader("User-Agent", "RevoTV/1.0 (Android TV launcher)");
+                reqs[i].SendWebRequest();
+            }
+            try
+            {
+                while (true)
+                {
+                    bool allDone = true;
+                    for (int i = 0; i < reqs.Length && res.text == null; i++)
+                    {
+                        var r = reqs[i];
+                        if (!r.isDone) { allDone = false; continue; }
+                        if (r.result == UnityWebRequest.Result.Success) { res.text = r.downloadHandler.text; WxWorked(i); }
+                        else res.err = r.error;
+                    }
+                    if (res.text != null || allDone) yield break;
+                    yield return null;
+                }
+            }
+            finally
+            {
+                foreach (var r in reqs) { if (!r.isDone) r.Abort(); r.Dispose(); }
+            }
+        }
         public void FetchGlobe() { StopCoroutine("GlobeRoutine"); StartCoroutine("GlobeRoutine"); if (globeZoom >= SatZoom - 1) StartCoroutine(SatRoutine()); }
 
         // ---- satellite photo: from SatZoom on, the map is Esri's World Imagery (tiles fetched around the view, stitched into one texture)
@@ -1406,15 +1442,14 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             {
                 var sla = new List<string>(); var slo = new List<string>();
                 for (int s = 0; s < StN.Length; s++) { sla.Add(StLat[s].ToString(inv)); slo.Add(StLon[s].ToString(inv)); }
-                using (var sreq = UnityWebRequest.Get(WxUrl("/v1/forecast?latitude=" + string.Join(",", sla) + "&longitude=" + string.Join(",", slo) + "&current=temperature_2m&temperature_unit=fahrenheit&timezone=auto", 0)))
+                var sres = new WxRes();
+                yield return WxGet("/v1/forecast?latitude=" + string.Join(",", sla) + "&longitude=" + string.Join(",", slo) + "&current=temperature_2m&temperature_unit=fahrenheit&timezone=auto", 15, sres);
                 {
-                    sreq.timeout = 15;
-                    yield return sreq.SendWebRequest();
-                    if (sreq.result == UnityWebRequest.Result.Success)
+                    if (sres.text != null)
                     {
                         try
                         {
-                            var stk = JToken.Parse(sreq.downloadHandler.text);
+                            var stk = JToken.Parse(sres.text);
                             var sarr = stk is JArray sa ? sa : new JArray(stk);
                             for (int s = 0; s < StN.Length && s < sarr.Count; s++) if (sarr[s]["current"] != null) stateWx[s] = (float) sarr[s]["current"]["temperature_2m"];
                         }
@@ -1431,24 +1466,24 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             foreach (int i in need) { la.Add(TLa(i).ToString(inv)); lo.Add(TLo(i).ToString(inv)); }
             string url = "/v1/forecast?latitude=" + string.Join(",", la) + "&longitude=" + string.Join(",", lo)
                 + "&current=temperature_2m,weather_code,is_day&temperature_unit=fahrenheit&timezone=auto";
-            using (var req = UnityWebRequest.Get(WxUrl(url, 0)))
+            float g0 = Time.realtimeSinceStartup;
+            var gres = new WxRes();
+            yield return WxGet(url, 10, gres);
             {
-                req.timeout = 10;
-                yield return req.SendWebRequest();
-                if (req.result != UnityWebRequest.Result.Success)
+                if (gres.text == null)
                 {
-                    WxNext();
                     // the map said "Getting the weather around the world..." for good: it says the service is slow and tries again
-                    Debug.Log("[Globe] weather: " + req.error + ": trying again in 15 s");
+                    Debug.Log("[Globe] weather: " + gres.err + ": trying again in 15 s");
                     globeWxFailed = true; if (globe && !spinning) Render();
                     yield return new WaitForSecondsRealtime(15f);
                     if (globe) FetchGlobe();
                     yield break;
                 }
                 globeWxFailed = false;
+                Debug.Log("[Globe] weather for " + need.Count + " towns in " + Mathf.RoundToInt((Time.realtimeSinceStartup - g0) * 1000f) + " ms");
                 try
                 {
-                    var tk = JToken.Parse(req.downloadHandler.text);
+                    var tk = JToken.Parse(gres.text);
                     var arr = tk is JArray a ? a : new JArray(tk);
                     for (int n = 0; n < need.Count && n < arr.Count; n++) if (arr[n]["current"] != null) cityWx[need[n]] = arr[n]["current"];
                 }
@@ -1512,7 +1547,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
         }
 
         // a smooth flight to a place: the sphere turns there (town names hidden while it moves), then settles at the wanted zoom
-        private IEnumerator GlideTo(float lat, float lon, int zoom)
+        private IEnumerator GlideTo(float lat, float lon, int zoom, string focus = null)
         {
             spinning = true; townCity = -1;
             HideLabels();
@@ -1529,7 +1564,7 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
             }
             zoomAnim = -1f; globeZoom = Mathf.Clamp(zoom, 0, GlobeZoom.Length - 1); spinning = false;
             globeLon = Mathf.Repeat(globeLon + 180f, 360f) - 180f; // back into -180..180 (a flight "west" to Shanghai ended at -239)
-            pendingCell ??= "Cell " + (globeZoom >= TownZoom ? "Next town ►" : "Next city ►"); // the light stays on the button you're pressing
+            pendingCell = focus ?? pendingCell ?? "Cell " + (globeZoom >= TownZoom ? "Next town ►" : "Next city ►"); // the light stays on the button you're pressing (My place keeps it on My place)
             globeDirty = true; Render(); FetchGlobe();
         }
 

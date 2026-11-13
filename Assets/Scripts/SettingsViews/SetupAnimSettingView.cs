@@ -28,6 +28,21 @@ namespace SettingsViews
 
         private void OnSelectedChannel(ChannelAnimation animation)
         {
+            // on a TV it asks first ("Use ... for this channel?"): one press on the list used to put it on straight away
+            if (TVMode.IsTV)
+            {
+                PopupController.ShowPopup(animation.type == CHANNELTYPE.ICON ? "tv.anim.useicon" : "tv.anim.usebanner", () =>
+                {
+                    PopupController.ClosePopup();
+                    UseAnimation(animation);
+                }, PopupController.ClosePopup, new[] { animation.name });
+                return;
+            }
+            UseAnimation(animation);
+        }
+
+        private void UseAnimation(ChannelAnimation animation)
+        {
             if (animation.type == CHANNELTYPE.ICON)
             {
                 // we assign the icon animation.

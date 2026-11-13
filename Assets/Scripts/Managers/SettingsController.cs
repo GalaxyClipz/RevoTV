@@ -756,6 +756,7 @@ public class SettingsController : MonoBehaviour
         PopupController.ShowPopup("popup.retrievinganimations", null);
         yield return new WaitForSeconds(0.6f);
         SetContentPivot(1f);
+        spawnType = type;
         List<AnimationBasicInfo> list = ChannelController._instance.GetAllChannelInfo(type).OrderBy(elem => elem.animationName).ToList();
         foreach (AnimationBasicInfo info in list)
         {
@@ -792,6 +793,8 @@ public class SettingsController : MonoBehaviour
         }
         PopupController.ClosePopup();
     }
+
+    private CHANNELTYPE spawnType; // the kind of animation the list being filled shows
 
     private void SpawnAnimationOrTheme(AnimationBasicInfo info, UnityAction callback, bool isAnim = true, bool addCheckMark = false)
     {
@@ -833,13 +836,18 @@ public class SettingsController : MonoBehaviour
             prefab.GetComponent<Button>().onClick.AddListener(callback);
         if (isAnim)
         {
+            // on a TV, holding OK on an animation in Settings > Channel Pictures asks whether to delete it (like the theme list);
+            // everywhere else holding OK previews it
+            bool tvDelete = TVMode.IsTV && currentMenu != null && currentMenu.GetMenu() == SETTINGSMENU.CHANNEL_SELECTION_EDITOR;
+            CHANNELTYPE listType = spawnType;
             prefab.GetComponent<LongClickButton>().onLongClick.AddListener(() =>
             {
+                if (tvDelete) { TVAnimTools.AskDelete(info, listType); return; }
                 PreviewController._instance.ShowDecoy(ChannelController._instance.GetOrLoadChannelAnimation(info.animationFileName));
             });
             prefab.GetComponent<LongClickButton>().onRelease.AddListener(() =>
             {
-                PreviewController._instance.HideDecoy(false);
+                if (!tvDelete) PreviewController._instance.HideDecoy(false);
             });
         }
         else

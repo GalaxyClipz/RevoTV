@@ -165,6 +165,7 @@ public static class TVGameScreen
         public float h;
         public ScrollRect scroll;
         private bool started, filled;
+        private float nextPoll;
 
         public void Restart()
         {
@@ -176,6 +177,9 @@ public static class TVGameScreen
         private void Update()
         {
             if (filled) return;
+            // asked ten times a second, not every frame (each ask is a trip into Java)
+            if (started && Time.unscaledTime < nextPoll) return;
+            nextPoll = Time.unscaledTime + 0.1f;
 #if UNITY_ANDROID && !UNITY_EDITOR
             using var helper = new AndroidJavaClass(Helper);
             if (!started) { started = true; helper.CallStatic("startGameScan"); return; }

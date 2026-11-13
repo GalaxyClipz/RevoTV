@@ -32,6 +32,16 @@ public static class TVDisc
 #endif
     }
 
+    // the installed emulator and Revo's copy signed by the same key? (reads the whole installer: the "yes" is remembered for this copy)
+    private static bool SameSigner(AndroidJavaClass h, AndroidJavaObject activity, string pkg, string apk, string stamp)
+    {
+        string key = stamp + "#" + pkg;
+        if (PlayerPrefs.GetString("tv.disc.signok", "") == key) return true;
+        bool same = h.CallStatic<bool>("sameSigner", activity, pkg, apk);
+        if (same) { PlayerPrefs.SetString("tv.disc.signok", key); PlayerPrefs.Save(); }
+        return same;
+    }
+
     private static IEnumerator OpenRoutine()
     {
         bool is64;
@@ -50,7 +60,22 @@ public static class TVDisc
 
         using var h = new AndroidJavaClass(Helper);
         var activity = AndroidLinker.currentActivity;
-        string bundledPackage = File.Exists(apk) ? h.CallStatic<string>("apkPackage", activity, apk) : null;
+        // reading the installer's name means opening the whole ~30 MB file: done once per copy of it and remembered
+        // (it was done on every open, on the TV's slow chip, and the channel felt stuck for a moment)
+        float t0 = Time.realtimeSinceStartup;
+        string stamp = File.Exists(apk) ? new FileInfo(apk).Length + "|" + File.GetLastWriteTimeUtc(apk).Ticks : null;
+        string bundledPackage = null;
+        if (stamp != null)
+        {
+            var cached = PlayerPrefs.GetString("tv.disc.apkpkg", "").Split('#');
+            if (cached.Length == 2 && cached[0] == stamp && cached[1].Length > 0) bundledPackage = cached[1];
+            else
+            {
+                bundledPackage = h.CallStatic<string>("apkPackage", activity, apk);
+                if (!string.IsNullOrEmpty(bundledPackage)) { PlayerPrefs.SetString("tv.disc.apkpkg", stamp + "#" + bundledPackage); PlayerPrefs.Save(); }
+            }
+        }
+        Debug.Log("[Disc] installer checked in " + Mathf.RoundToInt((Time.realtimeSinceStartup - t0) * 1000f) + " ms");
 
         // already installed (Dolphin, or the fork this build carries): open it
         foreach (var pkg in new[] { bundledPackage, Package })
@@ -75,7 +100,8 @@ public static class TVDisc
                     yield break;
                 }
                 // an older copy of the 32-bit emulator (with its touch buttons over the game): offer Revo's TV build once
-                if (!is64 && pkg == bundledPackage && File.Exists(apk) && !h.CallStatic<bool>("sameSigner", activity, pkg, apk) && PlayerPrefs.GetInt("tv.disc.update.asked", 0) == 0)
+                // (asked once only: the "was it already asked" check comes first, the signature check reads the whole installer)
+                if (!is64 && pkg == bundledPackage && PlayerPrefs.GetInt("tv.disc.update.asked", 0) == 0 && File.Exists(apk) && !SameSigner(h, activity, pkg, apk, stamp))
                 {
                     string target = pkg;
                     PlayerPrefs.SetInt("tv.disc.update.asked", 1); PlayerPrefs.Save();
@@ -88,7 +114,7 @@ public static class TVDisc
                     yield break;
                 }
                 // the 32-bit fork's own screens don't work with a remote: Revo lists the games itself
-                if (!is64) { TVControllers.TuneDolphin(); TVGameScreen.Show(pkg); yield break; }
+                if (!is64) { TVControllers.TuneDolphin(); TVGameScreen.Show(pkg); Debug.Log("[Disc] game list up in " + Mathf.RoundToInt((Time.realtimeSinceStartup - t0) * 1000f) + " ms"); yield break; }
                 Debug.Log("[Disc] opening " + pkg);
                 AndroidLinker.LaunchApp(pkg, false);
                 yield break;

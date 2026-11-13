@@ -133,6 +133,9 @@ public class ChannelController : MonoBehaviour
         TVLayout.FitChannelView(channelObjects, channelLeftArrow, channelRightArrow);
         Vector2 center = currentChannel.appHandler.GetCenter();
         channelObjects.transform.position = new Vector3(center.x, center.y, 0);
+        // on a TV the preview grows out of the tile itself (it starts exactly the tile's size), like the Wii: before, it started as a
+        // bigger card than the tile while the tile under it was squeezed thin (the phone layout's portrait shape)
+        if (TvZoom()) channelObjects.transform.localScale = TileFitScale();
 
         Ease defaultEase = Ease.InQuad;
         float duration = 0.55f;
@@ -154,7 +157,7 @@ public class ChannelController : MonoBehaviour
         float size = CameraController.GetChannelSize(0.18f) * GridController._instance.GetChannelSizeMultiplier();
         channelObjects.transform.DOScale(new Vector3(size, size, 1f),duration).SetEase(defaultEase);
         float newValue = 0.425f * GridController._instance.GetChannelSizeMultiplier();
-        currentChannel.appHandler.transform.DOScaleX(newValue, duration).SetEase(defaultEase);
+        if (!TvZoom()) currentChannel.appHandler.transform.DOScaleX(newValue, duration).SetEase(defaultEase);
 
         DOTween.ToAlpha(() => blackBlackground.color, x => blackBlackground.color = x, 1, duration).SetEase(defaultEase);
         //DOTween.ToAlpha(() => blackBorder.color, x => blackBorder.color = x, 1, duration).SetEase(defaultEase);
@@ -250,7 +253,7 @@ public class ChannelController : MonoBehaviour
 
         lastHigher = higher;
         currentChannel = nextChannel;
-        nextChannel.appHandler.transform.localScale = new Vector3(0.425f * size, size, size);
+        if (!TvZoom()) nextChannel.appHandler.transform.localScale = new Vector3(0.425f * size, size, size);
         StartCoroutine(_ChangeChannel(nextChannel));
     }
 
@@ -376,7 +379,9 @@ public class ChannelController : MonoBehaviour
             currentChannel.appHandler.border.DOColor(Color.white, duration);
         }
         
-        channelObjects.transform.DOScale(GetDefaultChannelObjectsSize(), duration);
+        // on a TV it shrinks back into the tile's own shape (then is put back to its usual size once hidden)
+        bool tvZoom = TvZoom();
+        channelObjects.transform.DOScale(tvZoom ? TileFitScale() : GetDefaultChannelObjectsSize(), duration);
         // straight back to the size the home grid keeps it at (classic TV tiles have their own proportions), so it never shows a wrong shape first
         currentChannel.appHandler.transform.DOScale(HomeTileScale(), duration);
 
@@ -389,11 +394,28 @@ public class ChannelController : MonoBehaviour
 
         yield return new WaitForSeconds(duration);
         channelView.SetActive(false);
+        if (tvZoom) { channelObjects.transform.DOKill(); RefreshChannelObjectsSize(); }
         currentChannel = null;
         CameraController.SetAutorotationStatus(CameraController._instance.isHorizontalAllowed);
         AnimationController._instance.ChangeCurrentAnimation(null);
         GridController._instance.ShowArrows();
         AppController.SetTransitioning(false);
+    }
+
+    private static bool TvZoom() => TVMode.IsTV && !CameraController.IsPortrait();
+
+    // the preview's scale that makes it exactly as wide as the open channel's tile on the home grid (its height then matches too:
+    // the preview is the screen's shape and a tile is almost the same shape)
+    private Vector3 TileFitScale()
+    {
+        var rt = (RectTransform) channelObjects.transform;
+        var tile = currentChannel != null && currentChannel.appHandler != null ? currentChannel.appHandler.rectTransform : null;
+        if (tile == null) return GetDefaultChannelObjectsSize();
+        float tw = tile.rect.width * Mathf.Abs(tile.lossyScale.x), pw = rt.rect.width * Mathf.Abs(rt.lossyScale.x);
+        if (tw <= 0f || pw <= 0f || rt.localScale.x <= 0f) return GetDefaultChannelObjectsSize();
+        float k = rt.localScale.x * tw / pw;
+        Debug.Log("[Zoom] tile " + Mathf.RoundToInt(tw) + " wide, preview " + Mathf.RoundToInt(pw) + " -> scale " + k.ToString("0.000"));
+        return new Vector3(k, k, 1f);
     }
 
     // the scale a channel tile has on the home grid (the same numbers Grid.ResizeGrid and TVNav.EnforceTileSizes use)

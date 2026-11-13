@@ -1514,6 +1514,9 @@ public class TVNav : MonoBehaviour
             float side = Mathf.Min(a.width, a.height) * 0.92f;
             if (side > 8f) return new Rect(a.center.x - side * 0.5f, a.center.y - side * 0.5f, side, side);
         }
+        // a row of the Settings animation / theme lists: the light wraps the whole row. The Content Hub's rows have a grey face (the
+        // light hugged it) but your own rows are see-through, so the light shrank onto their text and looked smaller (2026-11-13)
+        if (rt.Find("EditHolder") != null && rt.Find("Text") != null) return full;
         // a button that has its own visible picture IS the shape: glow around that, not around whatever sits inside it
         var own = rt.GetComponent<Graphic>();
         if (own != null && own.enabled && own.color.a > 0.3f && (own is Image oi ? oi.sprite != null : true) && !(own is TMPro.TMP_Text)) return full;
