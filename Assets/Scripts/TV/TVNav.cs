@@ -246,9 +246,14 @@ public class TVNav : MonoBehaviour
         {
             autoUntil = 0f;
             PointerMode = false;
+            bool chanOpen = ChannelController._instance != null && ChannelController._instance.currentChannel != null;
+            TVFrameProbe.Detail = chanOpen; TVFrameProbe.detail = "";
             long pm = TVFrameProbe.Begin();
             Move(dir);
+            TVFrameProbe.Detail = false;
             TVFrameProbe.End("move", pm);
+            if (chanOpen)
+                Debug.Log("[Nav] channel move " + ((TVFrameProbe.Begin() - pm) * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("0.0") + " ms, frame " + Mathf.RoundToInt(Time.unscaledDeltaTime * 1000f) + " ms [" + TVFrameProbe.detail.Trim() + "]");
         }
 
         long p0 = TVFrameProbe.Begin();
@@ -332,7 +337,8 @@ public class TVNav : MonoBehaviour
     }
 
     // settings pages are dense lists: the light has to keep up there
-    private static float GlideScale() => SettingsOpen() ? 0.55f : 1f;
+    // (and on an open channel, where the light jumps far between Start and the arrows)
+    private static float GlideScale() => SettingsOpen() ? 0.55f : ChannelController._instance != null && ChannelController._instance.currentChannel != null ? 0.6f : 1f;
 
     private static bool IsTile(GameObject go) => go.GetComponentInParent<AppHandler>() != null || go.GetComponentInParent<EmptyAppHandler>() != null;
 
@@ -552,15 +558,20 @@ public class TVNav : MonoBehaviour
         }
         lastList = IsTile(c.go) ? null : c.go.GetComponentInParent<ScrollRect>();
         focus = c.go;
+        long sf = TVFrameProbe.Begin();
         WiiButton.ReleaseOthers(c.go.transform);
+        TVFrameProbe.End("f.release", sf); sf = TVFrameProbe.Begin();
         ReleaseStaleHover();
+        TVFrameProbe.End("f.stale", sf);
         fitGraphics = null;
         focusTime = Time.unscaledTime;
         glideOffset = glowWasShown && lastFocusCenter != Vector2.zero && Vector2.Distance(lastFocusCenter, c.center) < Screen.width * 0.6f ? lastFocusCenter - c.center : Vector2.zero;
         glideVel = Vector2.zero;
         glowWasShown = false;
         lastFocusCenter = c.center;
+        long sp = TVFrameProbe.Begin();
         RInput.PlacePointer(c.press != Vector2.zero ? c.press : c.center);
+        TVFrameProbe.End("f.pointer", sp);
         pointerOnCenter = c.press == Vector2.zero;
         pointerAt = c.center;
     }
@@ -1017,9 +1028,21 @@ public class TVNav : MonoBehaviour
         canvases.AddRange(FindObjectsByType<Canvas>(FindObjectsSortMode.None));
     }
 
+    private object chanCacheFor;
+    // a channel is open full screen, not zooming, with nothing else over it
+    private bool ChannelQuiet(ChannelController cc) => cc.currentChannel != null && cc.channelView != null && !InOptions && !SettingsOpen()
+        && !AppController.IsTransitioning() && !TVWeather.Open && !TVServerScreen.Open && !TVControllers.Open && !TVGameScreen.Open;
+
     private List<Candidate> Gather(bool force)
     {
         if (!force && Time.unscaledTime - cacheTime < CacheLife) return cache;
+        // a channel open on screen: its few buttons (Start, Revo Menu, the arrows) stay put, so the list found when it opened is
+        // used again instead of hit-testing everything on every press (~30 ms on the projector, at 20 fps the press's frame
+        // came out late); a different channel, anything opening over it or a button going away looks again
+        var ccq = ChannelController._instance;
+        if (!force && chanCacheFor != null && ccq != null && ccq.currentChannel == chanCacheFor && Time.unscaledTime - cacheTime < 4f
+            && ChannelQuiet(ccq) && ModalRoot() == null && cache.Count > 0 && cache.TrueForAll(c => c.go != null && c.go.activeInHierarchy))
+            return cache;
         cacheTime = Time.unscaledTime;
         cache = new List<Candidate>();
         var result = cache;
@@ -1042,6 +1065,11 @@ public class TVNav : MonoBehaviour
                          && !TVWeather.Open && !TVServerScreen.Open && !TVControllers.Open && !TVGameScreen.Open;
         var gcG = GridController._instance;
         Transform curGridT = gcG != null && gcG.currentGrid != null && !gcG.isChangingGrid ? gcG.currentGrid.transform : null;
+        // a channel open full screen (not zooming, nothing over it): the home tiles behind it are covered, so they're skipped
+        // without the five "is it on top" ray tests each (that made every press on a channel's Start / arrows wait), and
+        // anything else outside the channel view gets one test instead of five
+        Transform chanT = popupRoot == null && ccG != null && ChannelQuiet(ccG) ? ccG.channelView.transform : null;
+        chanCacheFor = chanT != null ? ccG.currentChannel : null;
 
         foreach (var canvas in canvases)
         {
@@ -1073,7 +1101,10 @@ public class TVNav : MonoBehaviour
                 if (r.width > Screen.width * 0.92f && r.height > Screen.height * 0.8f) continue;
                 if (!screenRect.Contains(r.center)) continue;
                 Vector2 press = r.center;
-                if (!(homeClear && curGridT != null && target.transform.IsChildOf(curGridT) && IsTile(target)) && !IsTopmost(target, r.center, data, cursorRoot))
+                bool outsideChan = chanT != null && !target.transform.IsChildOf(chanT);
+                if (outsideChan && IsTile(target)) continue;
+                if (outsideChan && !IsTopmost(target, r.center, data, cursorRoot)) continue;
+                if (!outsideChan && !(homeClear && curGridT != null && target.transform.IsChildOf(curGridT) && IsTile(target)) && !IsTopmost(target, r.center, data, cursorRoot))
                 {
                     // partly covered (a see-through strip over the middle, the edge of a list's frame): any other spot of it that
                     // is on top still counts, and the press goes there (Content Hub's banner "Set" button was never reachable)
@@ -1100,14 +1131,18 @@ public class TVNav : MonoBehaviour
             }
         }
         TVFrameProbe.End("g.scan", pgc);
+        if (TVFrameProbe.Detail) TVFrameProbe.detail += " rays=" + rayCount + " found=" + result.Count + " looked=" + seen.Count;
+        rayCount = 0;
         return result;
     }
 
     // the thing must actually be the one under its own centre, otherwise it's hidden or covered (e.g. by a popup)
+    private static int rayCount;
     private bool IsTopmost(GameObject target, Vector2 center, PointerEventData data, RectTransform cursorRoot)
     {
         data.position = center;
         hits.Clear();
+        rayCount++;
         EventSystem.current.RaycastAll(data, hits);
         GameObject top = null;
         foreach (var h in hits)

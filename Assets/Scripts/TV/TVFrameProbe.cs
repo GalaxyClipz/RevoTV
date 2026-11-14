@@ -17,10 +17,13 @@ public class TVFrameProbe : MonoBehaviour
     // named pieces of work timed during the frame (Begin / End): a slow frame lists the ones over 5 ms
     private static readonly System.Diagnostics.Stopwatch piece = new System.Diagnostics.Stopwatch();
     private static string pieces = "", lastPieces = "";
+    // set around one piece of work to list everything in it over 1 ms (read Detail text afterwards)
+    public static bool Detail; public static string detail = "";
     public static long Begin() { if (!piece.IsRunning) piece.Start(); return piece.ElapsedTicks; }
     public static void End(string name, long from)
     {
         double ms = (piece.ElapsedTicks - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        if (Detail) { if (ms > 1.0) detail += " " + name + "=" + ms.ToString("0.0"); return; }
         if (ms > 5.0 && Time.unscaledTime < ProbeUntil + 0.3f) pieces += " " + name + "=" + ms.ToString("0");
     }
 

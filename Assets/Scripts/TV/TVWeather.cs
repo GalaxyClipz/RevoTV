@@ -2535,17 +2535,44 @@ if (!settings && !globe && data != null) MapBackground(day ? new Color(0.02f, 0.
     private class WeatherMusic : MonoBehaviour
     {
         private AudioSource src;
+        private bool started, paused;
+        private float nextCheck;
 
-        private void Start()
+        // the song streams from the build (it used to be unpacked whole when it first played, and a delayed start on a clip that
+        // wasn't loaded yet sometimes never began): wait for the chime and for the song to be ready, then play it, and start it
+        // again if anything stopped it while the channel is still open
+        private System.Collections.IEnumerator Start()
         {
+            float t0 = Time.unscaledTime;
             var clip = Resources.Load<AudioClip>("Music/forecast");
-            if (clip == null) return;
+            if (clip == null) { Debug.Log("[Forecast] music missing"); yield break; }
             src = gameObject.AddComponent<AudioSource>();
-            src.playOnAwake = false; src.spatialBlend = 0f; src.loop = true;
+            src.playOnAwake = false; src.spatialBlend = 0f; src.loop = true; src.ignoreListenerPause = true;
             src.clip = clip;
-            src.volume = Mathf.Clamp01(PREFS.MusicVolume.GetFloat()) * 0.8f;
-            src.PlayDelayed(2.4f); // after the chime
+            if (clip.loadState != AudioDataLoadState.Loaded) clip.LoadAudioData();
+            float until = Time.unscaledTime + 8f;
+            while (clip.loadState == AudioDataLoadState.Loading && Time.unscaledTime < until) yield return null;
+            while (Time.unscaledTime - t0 < 2.4f) yield return null; // after the chime
+            Play("music playing after " + Mathf.RoundToInt((Time.unscaledTime - t0) * 1000) + " ms, load " + clip.loadState);
+            started = true;
         }
+
+        private void Play(string why)
+        {
+            if (src == null) return;
+            src.volume = Mathf.Clamp01(PREFS.MusicVolume.GetFloat()) * 0.8f;
+            src.Play();
+            Debug.Log("[Forecast] " + why);
+        }
+
+        private void Update()
+        {
+            if (!started || paused || src == null || Time.unscaledTime < nextCheck) return;
+            nextCheck = Time.unscaledTime + 1f;
+            if (!src.isPlaying && src.volume > 0f) Play("music had stopped, started again");
+        }
+
+        private void OnApplicationPause(bool p) { paused = p; nextCheck = Time.unscaledTime + 1.5f; }
 
         private void OnDestroy() { if (src != null) src.Stop(); }
     }
